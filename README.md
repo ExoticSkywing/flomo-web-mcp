@@ -8,6 +8,8 @@
 
 完整开发流程见 [开发流程文档](docs/development-flow.md)。
 
+实际推进记录见 [开发日志](docs/development-log.md)。
+
 首版工具目标：
 
 - `ping`
