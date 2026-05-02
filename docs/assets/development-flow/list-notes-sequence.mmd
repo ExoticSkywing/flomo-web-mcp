@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant Client as MCP 客户端
+    participant Tool as list_notes
+    participant Read as flomoReadClient
+    participant HTTP as FlomoHttpClient
+    participant Flomo as flomo Web
+    participant Parser as memoParser
+
+    Client->>Tool: call list_notes(limit)
+    Tool->>Read: list(limit)
+    Read->>HTTP: requestJson(FLOMO_READ_ENDPOINT)
+    HTTP->>Flomo: GET/POST internal endpoint
+    Flomo-->>HTTP: raw JSON
+    HTTP-->>Read: raw JSON
+    Read->>Parser: parseMemo(raw)
+    Parser-->>Read: Memo[]
+    Read-->>Tool: Memo[]
+    Tool-->>Client: { ok: true, items }

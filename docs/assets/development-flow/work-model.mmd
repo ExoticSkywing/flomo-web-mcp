@@ -1,0 +1,20 @@
+flowchart TD
+    A["MCP 客户端<br/>ChatGPT / Claude / Cursor / Cherry Studio"]
+    --> B["flomo-mcp Server<br/>stdio MCP"]
+
+    B --> C["Tools 层"]
+    C --> C1["ping"]
+    C --> C2["list_notes"]
+    C --> C3["search_notes"]
+    C --> C4["get_note"]
+    C --> C5["create_note"]
+
+    C --> D["Adapter 层"]
+    D --> D1["flomoReadClient"]
+    D --> D2["flomoWriteClient"]
+
+    D1 --> E["flomo Web 内部读取接口"]
+    D2 --> F["flomo Web 内部写入接口"]
+
+    E --> G["Bearer Token / Cookie"]
+    F --> G

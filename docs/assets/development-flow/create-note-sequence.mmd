@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant Client as MCP 客户端
+    participant Tool as create_note
+    participant Write as flomoWriteClient
+    participant HTTP as FlomoHttpClient
+    participant Flomo as flomo Web
+    participant Parser as memoParser
+
+    Client->>Tool: call create_note(content,tags)
+    Tool->>Write: create({ content, tags })
+    Write->>Write: formatCreateContent()
+    Write->>HTTP: requestJson(FLOMO_WRITE_ENDPOINT, payload)
+    HTTP->>Flomo: POST/PUT internal endpoint
+    Flomo-->>HTTP: raw JSON
+    HTTP-->>Write: raw JSON
+    Write->>Parser: parseMemo(raw)
+    Parser-->>Write: Memo
+    Write-->>Tool: Memo
+    Tool-->>Client: { ok: true, memo }

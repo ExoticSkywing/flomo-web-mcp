@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620" role="img" aria-labelledby="title desc">
+  <title id="title">flomo-mcp 工作模型</title>
+  <desc id="desc">MCP 客户端调用 flomo-mcp Server，Server 通过 Tools 层、Adapter 层访问 flomo Web 内部读写接口，并使用 Bearer Token 或 Cookie 鉴权。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#475569"/>
+    </marker>
+    <style>
+      .box { fill: #f8fafc; stroke: #334155; stroke-width: 1.5; rx: 8; }
+      .group { fill: #eef6ff; stroke: #2563eb; stroke-width: 1.5; rx: 8; }
+      .leaf { fill: #ffffff; stroke: #64748b; stroke-width: 1.2; rx: 7; }
+      .accent { fill: #ecfdf5; stroke: #059669; stroke-width: 1.5; rx: 8; }
+      .warn { fill: #fff7ed; stroke: #ea580c; stroke-width: 1.5; rx: 8; }
+      .text { font-family: Arial, "Microsoft YaHei", sans-serif; font-size: 15px; fill: #0f172a; text-anchor: middle; dominant-baseline: middle; }
+      .small { font-size: 13px; fill: #334155; }
+      .line { stroke: #475569; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect class="box" x="340" y="24" width="280" height="70"/>
+  <text class="text" x="480" y="50">MCP 客户端</text>
+  <text class="text small" x="480" y="74">ChatGPT / Claude / Cursor / Cherry Studio</text>
+
+  <path class="line" d="M480 94 L480 136"/>
+  <rect class="box" x="350" y="136" width="260" height="64"/>
+  <text class="text" x="480" y="160">flomo-mcp Server</text>
+  <text class="text small" x="480" y="182">stdio MCP</text>
+
+  <path class="line" d="M480 200 L480 242"/>
+  <rect class="group" x="150" y="242" width="660" height="118"/>
+  <text class="text" x="480" y="266">Tools 层</text>
+  <rect class="leaf" x="180" y="296" width="105" height="38"/>
+  <text class="text small" x="232" y="315">ping</text>
+  <rect class="leaf" x="300" y="296" width="105" height="38"/>
+  <text class="text small" x="352" y="315">list_notes</text>
+  <rect class="leaf" x="420" y="296" width="120" height="38"/>
+  <text class="text small" x="480" y="315">search_notes</text>
+  <rect class="leaf" x="555" y="296" width="105" height="38"/>
+  <text class="text small" x="607" y="315">get_note</text>
+  <rect class="leaf" x="675" y="296" width="105" height="38"/>
+  <text class="text small" x="727" y="315">create_note</text>
+
+  <path class="line" d="M480 360 L480 402"/>
+  <rect class="group" x="250" y="402" width="460" height="96"/>
+  <text class="text" x="480" y="426">Adapter 层</text>
+  <rect class="leaf" x="285" y="450" width="180" height="34"/>
+  <text class="text small" x="375" y="467">flomoReadClient</text>
+  <rect class="leaf" x="495" y="450" width="180" height="34"/>
+  <text class="text small" x="585" y="467">flomoWriteClient</text>
+
+  <path class="line" d="M375 498 L300 536"/>
+  <path class="line" d="M585 498 L660 536"/>
+  <rect class="accent" x="140" y="536" width="260" height="54"/>
+  <text class="text small" x="270" y="563">flomo Web 内部读取接口</text>
+  <rect class="accent" x="560" y="536" width="260" height="54"/>
+  <text class="text small" x="690" y="563">flomo Web 内部写入接口</text>
+
+  <path class="line" d="M400 563 L450 563"/>
+  <path class="line" d="M560 563 L510 563"/>
+  <rect class="warn" x="420" y="536" width="120" height="54"/>
+  <text class="text small" x="480" y="556">Bearer Token</text>
+  <text class="text small" x="480" y="574">/ Cookie</text>
+</svg>
