@@ -2,15 +2,37 @@ import type { EnvConfig } from "../config/env.js";
 import { requireAuthorization } from "../utils/auth.js";
 import { FlomoAuthError, FlomoParseError, FlomoRequestError } from "../utils/errors.js";
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 export class FlomoHttpClient {
   constructor(private readonly config: EnvConfig) {}
 
   async requestJson<T>(endpoint: string, init: RequestInit = {}): Promise<T> {
-    const response = await fetch(this.toUrl(endpoint), {
-      ...init,
-      headers: this.buildHeaders(init.headers),
-    });
-    const text = await response.text();
+    const url = this.toUrl(endpoint);
+    const abort = this.buildAbortSignal(init.signal);
+    let response: Response;
+    let text: string;
+
+    try {
+      response = await fetch(url, {
+        ...init,
+        headers: this.buildHeaders(init.headers),
+        signal: abort.signal,
+      });
+      text = await response.text();
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw new FlomoRequestError("REQUEST_TIMEOUT", "flomo 请求超时，请稍后重试。", { cause: error });
+      }
+
+      if (error instanceof FlomoRequestError || error instanceof FlomoAuthError) {
+        throw error;
+      }
+
+      throw new FlomoRequestError("REMOTE_CHANGED", "flomo 请求失败，网络请求未完成。", { cause: error });
+    } finally {
+      abort.cleanup();
+    }
 
     if (!response.ok) {
       throwHttpError(response.status, text);
@@ -62,7 +84,13 @@ export class FlomoHttpClient {
 
   private toUrl(endpoint: string): string {
     if (/^https?:\/\//i.test(endpoint)) {
-      return endpoint;
+      const url = new URL(endpoint);
+      const baseUrl = new URL(this.config.baseUrl);
+      if (url.origin !== baseUrl.origin) {
+        throw new FlomoRequestError("BAD_REQUEST", "FLOMO endpoint 必须是相对路径或与 FLOMO_BASE_URL 同源。");
+      }
+
+      return url.toString();
     }
 
     const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
@@ -71,6 +99,43 @@ export class FlomoHttpClient {
 
   private get webBaseUrl(): string {
     return this.config.webBaseUrl ?? this.config.baseUrl;
+  }
+
+  private buildAbortSignal(inputSignal: AbortSignal | null | undefined): { signal: AbortSignal; cleanup: () => void } {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, this.requestTimeoutMs);
+
+    let removeInputListener = (): void => undefined;
+    if (inputSignal) {
+      if (inputSignal.aborted) {
+        controller.abort(inputSignal.reason);
+      } else {
+        const abortFromInput = (): void => {
+          controller.abort(inputSignal.reason);
+        };
+        inputSignal.addEventListener("abort", abortFromInput, { once: true });
+        removeInputListener = () => inputSignal.removeEventListener("abort", abortFromInput);
+      }
+    }
+
+    return {
+      signal: controller.signal,
+      cleanup: () => {
+        clearTimeout(timeout);
+        removeInputListener();
+      },
+    };
+  }
+
+  private get requestTimeoutMs(): number {
+    const configured = this.config.requestTimeoutMs;
+    if (typeof configured !== "number" || !Number.isFinite(configured) || configured <= 0) {
+      return DEFAULT_REQUEST_TIMEOUT_MS;
+    }
+
+    return Math.trunc(configured);
   }
 }
 
@@ -133,4 +198,8 @@ function looksLikeSignError(message: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }

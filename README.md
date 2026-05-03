@@ -13,10 +13,23 @@ V1 已完成 MCP stdio 外壳、工具注册、配置读取、parser、标签处
 已注册工具：
 
 - `ping`
-- `list_notes`
-- `search_notes`
-- `get_note`
+- `list_notes`：列出最近 memo。
+- `sync_notes`：分页同步 flomo memo 到本地内存缓存，只返回同步统计，不返回全部正文。
+- `search_notes`：默认仍搜索最近 memo；传入 `scope: "all_synced_notes"` 时搜索 `sync_notes` 已同步的本地全库缓存。
+- `get_note`：默认在最近 memo 批次中按 `slug` 定位；传入 `scope: "all_synced_notes"` 时从已同步的本地全库缓存定位。
 - `create_note`
+
+## 全量同步边界
+
+本项目不提供“一次性返回全部笔记正文”的工具。需要全库检索时，先调用 `sync_notes` 建立本地缓存，再用 `search_notes` 或 `get_note` 显式指定：
+
+```json
+{
+  "scope": "all_synced_notes"
+}
+```
+
+`sync_notes` 支持 `pageSize`（最大 200）和 `maxPages`（最大 100）。如果达到页数上限但仍可能有更多笔记，返回值中的 `complete` 会是 `false`。
 
 ## 安全边界
 
@@ -88,6 +101,14 @@ npm run verify
 - 是否新增 Cookie、防重放字段或其它动态 header
 - 成功响应中 memo 所在字段是否仍为 `data`
 
+全量同步 memo：
+
+- 如当前默认路径失效，重新确认 `/api/v1/memo/updated/` 或对应分页路径
+- 分页参数是否仍为 `limit/latest_updated_at/latest_slug`
+- 终止条件是否仍可通过返回条数、游标或空列表判断
+- 返回体中 memo 数组字段是否仍为 `data`
+- memo 的稳定标识字段是否仍为 `slug`
+
 ## MCP 客户端配置示例
 
 先执行 `npm run build`，再把以下命令配置给支持 stdio MCP 的宿主：
@@ -102,14 +123,15 @@ npm run verify
         "FLOMO_AUTHORIZATION": "Bearer xxxxxxxxxxxxxxxxx",
         "FLOMO_BASE_URL": "https://flomoapp.com",
         "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
-        "FLOMO_TIMEZONE": "Asia/Shanghai"
+        "FLOMO_TIMEZONE": "Asia/Shanghai",
+        "FLOMO_REQUEST_TIMEOUT_MS": "30000"
       }
     }
   }
 }
 ```
 
-如果项目放在其它目录，把 `args` 改成对应的 `dist/index.js` 绝对路径。
+如果项目放在其它目录，把 `args` 改成对应的 `dist/index.js` 绝对路径。当前默认 adapter 已内置读写和同步 endpoint；只有 flomo Web 内部路径变化时才需要设置 `FLOMO_READ_ENDPOINT`、`FLOMO_SYNC_ENDPOINT` 或 `FLOMO_WRITE_ENDPOINT`。
 
 ## Roadmap
 
@@ -118,3 +140,4 @@ npm run verify
 3. 用真实凭据通过 MCP 客户端验收 `list_notes`、`search_notes`、`get_note`。已完成。
 4. DevTools 抓取新建 memo 请求，填充写入 adapter。已完成当前签名 body 适配。
 5. 加入更完整的集成测试与错误映射。已完成首版覆盖，包括 MCP in-memory smoke test 和 `npm run smoke:stdio`。
+6. 增加受控全量同步：`sync_notes` 分页建立本地缓存，`search_notes` / `get_note` 通过显式 scope 读取缓存。已完成首版。

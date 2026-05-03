@@ -3,6 +3,28 @@ import { toPublicError } from "../utils/errors.js";
 
 export type ToolResponse = CallToolResult;
 
+export function recentNotesScope(): { source: "recent_notes"; complete: false; description: string } {
+  return {
+    source: "recent_notes",
+    complete: false,
+    description: "Results are limited to the recent memo batch returned by flomo Web.",
+  };
+}
+
+export function allSyncedNotesScope(
+  complete: boolean,
+  syncedAt?: string,
+): { source: "all_synced_notes"; complete: boolean; description: string; syncedAt?: string } {
+  return {
+    source: "all_synced_notes",
+    complete,
+    description: complete
+      ? "Results come from the locally synced flomo cache."
+      : "Results come from the locally synced flomo cache, but the sync stopped before reaching the end.",
+    ...(syncedAt ? { syncedAt } : {}),
+  };
+}
+
 export function jsonToolResponse(value: unknown, isError = false): ToolResponse {
   return {
     ...(isError ? { isError } : {}),

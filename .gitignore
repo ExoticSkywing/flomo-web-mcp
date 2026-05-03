@@ -4,6 +4,8 @@ coverage/
 .env
 .env.*
 !.env.example
+__pycache__/
+*.pyc
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*

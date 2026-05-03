@@ -109,6 +109,169 @@ describe("BearerFlomoReadClient", () => {
     await expect(client.getBySlug("missing")).resolves.toBeNull();
     expect(calls).toBe(1);
   });
+
+  it("syncs paged notes into a local cache without duplicating cursor rows", async () => {
+    const capturedEndpoints: string[] = [];
+    const httpClient = {
+      async requestJson(endpoint: string): Promise<unknown> {
+        capturedEndpoints.push(endpoint);
+        if (capturedEndpoints.length === 1) {
+          return {
+            code: 0,
+            data: [
+              {
+                slug: "new-note",
+                content: "New full sync note",
+                tags: ["sync"],
+                created_at: 300,
+                updated_at: 300,
+              },
+              {
+                slug: "cursor-note",
+                content: "Cursor full sync note",
+                tags: ["sync"],
+                created_at: 200,
+                updated_at: 200,
+              },
+            ],
+          };
+        }
+
+        return {
+          code: 0,
+          data: [
+            {
+              slug: "cursor-note",
+              content: "Cursor full sync note",
+              tags: ["sync"],
+              created_at: 200,
+              updated_at: 200,
+            },
+            {
+              slug: "old-note",
+              content: "Old full sync note",
+              tags: ["archive"],
+              created_at: 100,
+              updated_at: 100,
+            },
+          ],
+        };
+      },
+    } as unknown as FlomoHttpClient;
+
+    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+
+    await expect(client.syncAll({ pageSize: 2, maxPages: 2 })).resolves.toMatchObject({
+      synced: 3,
+      totalCached: 3,
+      pages: 2,
+      complete: false,
+    });
+    await expect(client.searchSynced("archive")).resolves.toMatchObject([{ slug: "old-note" }]);
+    await expect(client.getSyncedBySlug("new-note")).resolves.toMatchObject({ slug: "new-note" });
+
+    expect(capturedEndpoints).toHaveLength(2);
+    expect(capturedEndpoints[0]).toContain("/api/v1/memo/updated/?");
+    expect(new URL(`https://example.test${capturedEndpoints[0]}`).searchParams.get("latest_updated_at")).toBe("0");
+    expect(new URL(`https://example.test${capturedEndpoints[0]}`).searchParams.get("latest_slug")).toBe("");
+    expect(new URL(`https://example.test${capturedEndpoints[0]}`).searchParams.get("limit")).toBe("2");
+    expect(new URL(`https://example.test${capturedEndpoints[1]}`).searchParams.get("latest_updated_at")).toBe("200");
+    expect(new URL(`https://example.test${capturedEndpoints[1]}`).searchParams.get("latest_slug")).toBe("cursor-note");
+  });
+
+  it("excludes deleted notes returned by the sync endpoint", async () => {
+    const httpClient = {
+      async requestJson(): Promise<unknown> {
+        return {
+          code: 0,
+          data: [
+            {
+              slug: "active-note",
+              content: "Active full sync note #active",
+              tags: ["active"],
+              created_at: 100,
+              updated_at: 100,
+              deleted_at: null,
+            },
+            {
+              slug: "deleted-note",
+              content: "Deleted full sync note #deleted",
+              tags: ["deleted"],
+              created_at: 90,
+              updated_at: 90,
+              deleted_at: "2026-04-17 17:04:37",
+            },
+          ],
+        };
+      },
+    } as unknown as FlomoHttpClient;
+
+    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+
+    await expect(client.syncAll({ pageSize: 200, maxPages: 1 })).resolves.toMatchObject({
+      synced: 1,
+      totalCached: 1,
+      pages: 1,
+      complete: true,
+    });
+    await expect(client.searchSynced("active")).resolves.toMatchObject([{ slug: "active-note" }]);
+    await expect(client.searchSynced("deleted")).resolves.toEqual([]);
+  });
+
+  it("does not mark sync complete when a full raw page only shrinks after deleted-note filtering", async () => {
+    const httpClient = {
+      async requestJson(): Promise<unknown> {
+        return {
+          code: 0,
+          data: [
+            {
+              slug: "active-note",
+              content: "Active full sync note",
+              tags: ["active"],
+              created_at: 100,
+              updated_at: 100,
+              deleted_at: null,
+            },
+            {
+              slug: "deleted-cursor-note",
+              content: "Deleted cursor row",
+              tags: ["deleted"],
+              created_at: 90,
+              updated_at: 90,
+              deleted_at: "2026-04-17 17:04:37",
+            },
+          ],
+        };
+      },
+    } as unknown as FlomoHttpClient;
+
+    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+
+    await expect(client.syncAll({ pageSize: 2, maxPages: 1 })).resolves.toMatchObject({
+      synced: 1,
+      totalCached: 1,
+      pages: 1,
+      complete: false,
+      nextCursor: {
+        latestUpdatedAt: 90,
+        latestSlug: "deleted-cursor-note",
+      },
+    });
+  });
+
+  it("requires a sync before searching the full local cache", async () => {
+    const httpClient = {
+      async requestJson(): Promise<unknown> {
+        return { code: 0, data: [] };
+      },
+    } as unknown as FlomoHttpClient;
+
+    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+
+    await expect(client.searchSynced("missing")).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
 });
 
 function makeConfig(overrides: Partial<EnvConfig> = {}): EnvConfig {
@@ -119,7 +282,6 @@ function makeConfig(overrides: Partial<EnvConfig> = {}): EnvConfig {
     webBaseUrl: "https://v.flomoapp.com",
     timezone: "Asia/Shanghai",
     logLevel: "info",
-    debugRawResponse: false,
     ...overrides,
   };
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EnvConfig } from "../src/config/env.js";
 import type { FlomoHttpClient } from "../src/clients/http.js";
 import { BearerFlomoWriteClient, formatCreateContent } from "../src/clients/flomoWriteClient.js";
@@ -10,12 +10,16 @@ describe("formatCreateContent", () => {
     );
   });
 
-  it("preserves existing HTML content and appends tags as a paragraph", () => {
-    expect(formatCreateContent("<p>Hello</p>", ["mcp"])).toBe("<p>Hello</p><p>#mcp</p>");
+  it("escapes HTML-like content by default and appends tags as a paragraph", () => {
+    expect(formatCreateContent("<p>Hello</p>", ["mcp"])).toBe("<p>&lt;p&gt;Hello&lt;/p&gt;</p><p>#mcp</p>");
   });
 });
 
 describe("BearerFlomoWriteClient", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("creates notes with the default signed flomo web PUT body", async () => {
     let capturedEndpoint = "";
     let capturedInit: RequestInit | undefined;
@@ -69,6 +73,33 @@ describe("BearerFlomoWriteClient", () => {
     expect(body.sign).toMatch(/^[a-f0-9]{32}$/);
   });
 
+  it("formats created_at in the configured flomo timezone", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-03T00:30:00.000Z"));
+
+    let capturedInit: RequestInit | undefined;
+    const httpClient = {
+      async requestJson(_endpoint: string, init?: RequestInit): Promise<unknown> {
+        capturedInit = init;
+        return {
+          code: 0,
+          data: {
+            slug: "created-slug",
+            content: "<p>Hello</p>",
+            created_at: "2026-05-02 20:30:00",
+          },
+        };
+      },
+    } as unknown as FlomoHttpClient;
+    const client = new BearerFlomoWriteClient(makeConfig({ timezone: "America/New_York" }), httpClient);
+
+    await client.create({ content: "Hello" });
+
+    const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
+    expect(body.created_at).toBe("2026-05-02 20:30:00");
+    expect(body.tz).toBe("-4:0");
+  });
+
   it("rejects blank note content before sending a request", async () => {
     let called = false;
     const httpClient = {
@@ -92,7 +123,6 @@ function makeConfig(overrides: Partial<EnvConfig> = {}): EnvConfig {
     webBaseUrl: "https://v.flomoapp.com",
     timezone: "Asia/Shanghai",
     logLevel: "info",
-    debugRawResponse: false,
     ...overrides,
   };
 }

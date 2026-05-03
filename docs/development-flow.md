@@ -149,12 +149,14 @@ npm run build
 - 大小写不敏感。
 - 默认返回 20 条，最大 100 条。
 - 首版不逆向服务端全文检索接口。
+- 返回值包含 `scope.source = "recent_notes"` 和 `scope.complete = false`，明确结果只来自最近 memo 批次。
 
 `get_note` 规则：
 
 - 通过 `slug` 匹配。
 - 找不到时返回 `memo: null`，不视为异常。
 - 后续如果发现单条详情接口，再替换底层实现。
+- 返回值包含 `scope.source = "recent_notes"` 和 `scope.complete = false`，避免把 `null` 误解为全库不存在。
 
 主要文件：
 
@@ -303,7 +305,8 @@ npm run build
         "FLOMO_AUTHORIZATION": "Bearer xxxxxxxxxxxxxxxxx",
         "FLOMO_BASE_URL": "https://flomoapp.com",
         "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
-        "FLOMO_TIMEZONE": "Asia/Shanghai"
+        "FLOMO_TIMEZONE": "Asia/Shanghai",
+        "FLOMO_REQUEST_TIMEOUT_MS": "30000"
       }
     }
   }
@@ -319,6 +322,26 @@ npm run build
   "FLOMO_COOKIE": "..."
 }
 ```
+
+## 阶段 9：全量同步与全库检索
+
+目标：支持 flomo 全库检索，但避免通过 MCP 一次性返回全部私人 memo 正文。
+
+实现规则：
+
+- `sync_notes` 使用 `/api/v1/memo/updated/` 分页同步到本地内存缓存。
+- 默认分页参数为 `pageSize=200`、`maxPages=50`；tool 入参上限为 `pageSize=200`、`maxPages=100`。
+- 返回同步统计、`complete`、`syncedAt` 和必要的后续游标，不返回 memo 正文数组。
+- `search_notes` 和 `get_note` 默认保持 `recent_notes` 行为；只有显式传入 `scope: "all_synced_notes"` 时才读取本地全库缓存。
+- 如果尚未调用 `sync_notes`，全库缓存查询返回明确错误，不隐式触发全量同步。
+- 写入成功后清理最近缓存和全库同步缓存，避免返回旧数据。
+
+验收：
+
+- `sync_notes` 不返回 `items` 或 `memos`。
+- 达到 `maxPages` 且仍可能有更多页面时，`complete=false`。
+- `search_notes({ scope: "all_synced_notes" })` 能查到不在最近批次里的 memo。
+- `get_note({ scope: "all_synced_notes" })` 能从同步缓存按 slug 定位。
 
 ## 接口变化时的维护流程
 
@@ -344,6 +367,8 @@ Mermaid 源码：[`maintenance-flow.mmd`](assets/development-flow/maintenance-fl
 - `list_notes` 能返回最近 memo。
 - `search_notes` 能按关键词和标签过滤。
 - `get_note` 能按 slug 返回单条 memo。
+- `sync_notes` 能分页同步到本地缓存，且不返回全部 memo 正文。
+- `search_notes` / `get_note` 在 `scope: "all_synced_notes"` 下能读取已同步缓存。
 - `create_note` 能创建新 memo。
 - `.env.example` 和 README 与实际配置一致。
 - `npm run typecheck`、`npm test`、`npm run build` 全部通过。

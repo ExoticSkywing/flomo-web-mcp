@@ -44,4 +44,14 @@ describe("parseMemo", () => {
     });
     expect(memo.createdAt).toBe("2024-03-09T16:00:00.000Z");
   });
+
+  it("preserves invalid numeric HTML entities instead of failing the whole memo", () => {
+    const memo = parseMemo({
+      slug: "bad-entity",
+      content: "<p>Hello &#999999999999; world</p>",
+      created_at: 1710000000,
+    });
+
+    expect(memo.content).toBe("Hello &#999999999999; world");
+  });
 });

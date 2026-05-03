@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { FlomoReadClient } from "../types/flomo.js";
-import { runJsonTool } from "./common.js";
+import { recentNotesScope, runJsonTool } from "./common.js";
 
 export function registerListNotesTool(server: McpServer, readClient: FlomoReadClient): void {
   server.tool(
@@ -14,6 +14,7 @@ export function registerListNotesTool(server: McpServer, readClient: FlomoReadCl
       runJsonTool(async () => ({
         ok: true,
         items: await readClient.list(limit),
+        scope: recentNotesScope(),
       })),
   );
 }

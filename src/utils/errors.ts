@@ -4,6 +4,7 @@ export type FlomoErrorCode =
   | "SIGN_INVALID"
   | "PARSER_FAILED"
   | "RATE_LIMITED"
+  | "REQUEST_TIMEOUT"
   | "REMOTE_CHANGED";
 
 export class FlomoError extends Error {

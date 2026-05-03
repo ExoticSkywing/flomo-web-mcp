@@ -17,11 +17,17 @@ describe("loadEnv", () => {
       timezone: "UTC",
       webPlatform: "Web",
       deviceModel: "Other",
+      requestTimeoutMs: 30_000,
     });
     expect(config.deviceId).toEqual(expect.any(String));
   });
 
   it("rejects invalid IANA timezone names before runtime requests", () => {
     expect(() => loadEnv({ FLOMO_TIMEZONE: "Mars/Base" })).toThrow(/FLOMO_TIMEZONE/);
+  });
+
+  it("loads a positive request timeout from env", () => {
+    expect(loadEnv({ FLOMO_REQUEST_TIMEOUT_MS: "1500" }).requestTimeoutMs).toBe(1500);
+    expect(() => loadEnv({ FLOMO_REQUEST_TIMEOUT_MS: "0" })).toThrow(/FLOMO_REQUEST_TIMEOUT_MS/);
   });
 });

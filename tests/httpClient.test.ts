@@ -6,6 +6,7 @@ import { FlomoAuthError, FlomoRequestError } from "../src/utils/errors.js";
 describe("FlomoHttpClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("uses flomo web origin headers separately from the API base URL", async () => {
@@ -44,6 +45,41 @@ describe("FlomoHttpClient", () => {
   it("maps flomo API sign and business failures from JSON responses", async () => {
     await expectApiFailure({ code: -20, message: "sign invalid" }, { code: "SIGN_INVALID" });
     await expectApiFailure({ code: -1, message: "bad payload" }, { code: "BAD_REQUEST" });
+  });
+
+  it("rejects off-origin absolute endpoints before attaching credentials", async () => {
+    let called = false;
+    vi.stubGlobal("fetch", async () => {
+      called = true;
+      return new Response("{}");
+    });
+
+    await expect(new FlomoHttpClient(makeConfig()).requestJson("https://example.test/api/v1/memo")).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    expect(called).toBe(false);
+  });
+
+  it("aborts requests after the configured timeout", async () => {
+    vi.useFakeTimers();
+    let capturedSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      async (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          capturedSignal = init?.signal ?? undefined;
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    );
+
+    const request = new FlomoHttpClient(makeConfig({ requestTimeoutMs: 50 })).requestJson("/api/v1/test");
+    const handledRequest = request.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(capturedSignal?.aborted).toBe(true);
+    await expect(handledRequest).resolves.toMatchObject({ code: "REQUEST_TIMEOUT" });
   });
 });
 
@@ -86,7 +122,7 @@ async function expectApiFailure(body: unknown, expectation: Partial<FlomoRequest
   await expect(new FlomoHttpClient(makeConfig()).requestJson("/api/v1/test")).rejects.toMatchObject(expectation);
 }
 
-function makeConfig(): EnvConfig {
+function makeConfig(overrides: Partial<EnvConfig> = {}): EnvConfig {
   return {
     authorization: "Bearer test",
     userAgent: "test-agent",
@@ -94,9 +130,9 @@ function makeConfig(): EnvConfig {
     webBaseUrl: "https://v.flomoapp.com",
     timezone: "Asia/Shanghai",
     logLevel: "info",
-    debugRawResponse: false,
     deviceId: "device-123",
     deviceModel: "Other",
     webPlatform: "Web",
+    ...overrides,
   };
 }

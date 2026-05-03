@@ -24,7 +24,7 @@ export class BearerFlomoWriteClient implements FlomoWriteClient {
     const content = formatCreateContent(input.content, input.tags);
     const payload = buildFlomoWebQuery({
       content,
-      created_at: formatCurrentLocalDateTime(),
+      created_at: formatFlomoLocalDateTime(this.config.timezone),
       source: "web",
       memo_from: "human",
       file_ids: [],
@@ -90,10 +90,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function formatContentHtml(content: string): string {
   const trimmed = content.trim();
-  if (looksLikeHtml(trimmed)) {
-    return trimmed;
-  }
-
   const paragraphs = trimmed
     .split(/\r?\n+/)
     .map((line) => line.trim())
@@ -101,10 +97,6 @@ function formatContentHtml(content: string): string {
     .map((line) => `<p>${escapeHtml(line)}</p>`);
 
   return paragraphs.join("");
-}
-
-function looksLikeHtml(value: string): boolean {
-  return /<\/?[a-z][\s\S]*>/i.test(value);
 }
 
 function escapeHtml(value: string): string {
@@ -115,15 +107,22 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function formatCurrentLocalDateTime(): string {
-  const date = new Date();
-  return [
-    date.getFullYear(),
-    pad2(date.getMonth() + 1),
-    pad2(date.getDate()),
-  ].join("-") + ` ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
-}
+export function formatFlomoLocalDateTime(timezone: string, date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  return [
+    values.get("year"),
+    values.get("month"),
+    values.get("day"),
+  ].join("-") + ` ${values.get("hour")}:${values.get("minute")}:${values.get("second")}`;
 }

@@ -13,11 +13,12 @@ export interface EnvConfig {
   timezone: string;
   logLevel: LogLevel;
   readEndpoint?: string;
+  syncEndpoint?: string;
   writeEndpoint?: string;
-  debugRawResponse: boolean;
   deviceId?: string;
   deviceModel?: string;
   webPlatform?: string;
+  requestTimeoutMs?: number;
 }
 
 const LogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
@@ -31,11 +32,12 @@ const EnvSchema = z.object({
   FLOMO_TIMEZONE: z.string().optional(),
   LOG_LEVEL: z.string().optional(),
   FLOMO_READ_ENDPOINT: z.string().optional(),
+  FLOMO_SYNC_ENDPOINT: z.string().optional(),
   FLOMO_WRITE_ENDPOINT: z.string().optional(),
-  FLOMO_DEBUG_RAW_RESPONSE: z.string().optional(),
   FLOMO_DEVICE_ID: z.string().optional(),
   FLOMO_DEVICE_MODEL: z.string().optional(),
   FLOMO_WEB_PLATFORM: z.string().optional(),
+  FLOMO_REQUEST_TIMEOUT_MS: z.string().optional(),
 });
 
 const defaultDeviceId = randomUUID();
@@ -55,11 +57,12 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     timezone,
     logLevel: logLevel.success ? logLevel.data : "info",
     readEndpoint: emptyToUndefined(parsed.FLOMO_READ_ENDPOINT),
+    syncEndpoint: emptyToUndefined(parsed.FLOMO_SYNC_ENDPOINT),
     writeEndpoint: emptyToUndefined(parsed.FLOMO_WRITE_ENDPOINT),
-    debugRawResponse: parsed.FLOMO_DEBUG_RAW_RESPONSE === "true",
     deviceId: emptyToUndefined(parsed.FLOMO_DEVICE_ID) ?? defaultDeviceId,
     deviceModel: emptyToUndefined(parsed.FLOMO_DEVICE_MODEL) ?? "Other",
     webPlatform: emptyToUndefined(parsed.FLOMO_WEB_PLATFORM) ?? "Web",
+    requestTimeoutMs: parsePositiveInteger(parsed.FLOMO_REQUEST_TIMEOUT_MS, 30_000, "FLOMO_REQUEST_TIMEOUT_MS"),
   };
 }
 
@@ -78,4 +81,18 @@ function validateTimezone(timezone: string): void {
   } catch (error) {
     throw new Error(`FLOMO_TIMEZONE 不是有效的 IANA timezone：${timezone}`, { cause: error });
   }
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number, name: string): number {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} 必须是正整数毫秒数。`);
+  }
+
+  return parsed;
 }
