@@ -24,6 +24,16 @@ V1 已完成 MCP stdio 外壳、工具注册、配置读取、parser、标签处
 
 ## 本地运行
 
+PowerShell:
+
+```powershell
+npm install
+Copy-Item .env.example .env
+npm run dev
+```
+
+Bash:
+
 ```bash
 npm install
 cp .env.example .env
@@ -79,7 +89,7 @@ npm test
   "mcpServers": {
     "flomo": {
       "command": "node",
-      "args": ["/root/projects/flomo-mcp/dist/index.js"],
+      "args": ["D:/Vib_Coding_Projects/flomo-mcp/dist/index.js"],
       "env": {
         "FLOMO_AUTHORIZATION": "Bearer xxxxxxxxxxxxxxxxx",
         "FLOMO_BASE_URL": "https://flomoapp.com",
@@ -90,6 +100,8 @@ npm test
   }
 }
 ```
+
+如果项目放在其它目录，把 `args` 改成对应的 `dist/index.js` 绝对路径。
 
 ## Roadmap
 

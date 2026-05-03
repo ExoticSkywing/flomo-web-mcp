@@ -716,3 +716,46 @@ audit: 0 vulnerabilities
 stdioTools=create_note,get_note,list_notes,ping,search_notes
 pingOk=true
 ```
+
+## 2026-05-03：MCP 配置示例收尾
+
+### 背景
+
+最终审计发现 README 和开发流程中的 MCP `args` 示例仍使用迁移前的 `/root/projects/flomo-mcp/dist/index.js`。当前工作目录已经迁移到 Windows：
+
+```text
+D:/Vib_Coding_Projects/flomo-mcp
+```
+
+如果继续保留旧路径，用户按文档接入 MCP 宿主时会加载不到构建产物。
+
+### 已完成改动
+
+- README 的本地运行步骤补充 PowerShell 命令。
+- README 和开发流程中的 MCP `args` 示例改为 `D:/Vib_Coding_Projects/flomo-mcp/dist/index.js`。
+- 阶段 8 配置示例移除默认情况下不再需要的 `FLOMO_READ_ENDPOINT` 和 `FLOMO_WRITE_ENDPOINT`，并补充 `FLOMO_WEB_BASE_URL`。
+
+### 验证证据
+
+```text
+npm run typecheck
+npm test
+npm run build
+npm audit --audit-level=moderate
+```
+
+结果：
+
+```text
+typecheck: passed
+tests: 8 files, 23 cases passed
+build: passed
+audit: 0 vulnerabilities
+```
+
+构建产物 stdio smoke：
+
+```text
+stdioTools=create_note,get_note,list_notes,ping,search_notes
+pingOk=true
+```

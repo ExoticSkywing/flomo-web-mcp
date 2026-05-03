@@ -48,7 +48,7 @@ npm run build
   "mcpServers": {
     "flomo": {
       "command": "node",
-      "args": ["/root/projects/flomo-mcp/dist/index.js"]
+      "args": ["D:/Vib_Coding_Projects/flomo-mcp/dist/index.js"]
     }
   }
 }
@@ -298,18 +298,19 @@ npm run build
   "mcpServers": {
     "flomo": {
       "command": "node",
-      "args": ["/root/projects/flomo-mcp/dist/index.js"],
+      "args": ["D:/Vib_Coding_Projects/flomo-mcp/dist/index.js"],
       "env": {
         "FLOMO_AUTHORIZATION": "Bearer xxxxxxxxxxxxxxxxx",
         "FLOMO_BASE_URL": "https://flomoapp.com",
-        "FLOMO_TIMEZONE": "Asia/Shanghai",
-        "FLOMO_READ_ENDPOINT": "/真实读取路径",
-        "FLOMO_WRITE_ENDPOINT": "/真实写入路径"
+        "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
+        "FLOMO_TIMEZONE": "Asia/Shanghai"
       }
     }
   }
 }
 ```
+
+如果项目不在 `D:/Vib_Coding_Projects/flomo-mcp`，把 `args` 改成实际的 `dist/index.js` 绝对路径。当前默认 adapter 已内置读写 endpoint；只有 flomo Web 内部路径变化时才需要设置 `FLOMO_READ_ENDPOINT` 或 `FLOMO_WRITE_ENDPOINT`。
 
 如果写入接口确认依赖 Cookie，再加：
 
