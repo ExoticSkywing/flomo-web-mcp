@@ -225,3 +225,270 @@ sec-ch-ua-mobile
 ```
 
 复现没有输出或写入 Authorization、Cookie、完整 URL query 值、完整响应体或 memo 正文。阶段 2 至此满足验收条件；阶段 3 的主要风险转为如何稳定生成 `timestamp/api_key/sign` 等动态 query 参数。
+
+## 2026-05-03：迁移到 Windows 开发交接
+
+### 迁移原因
+
+后续工作需要频繁操作 Windows 浏览器登录态、Chrome DevTools 端口、PowerShell 网络请求和 flomo Web 静态资源。当前 WSL 环境存在两个明显摩擦点：
+
+- WSL 里的 `curl` 受不可用本地代理 `127.0.0.1:7897` 和 DNS 问题影响，无法稳定直接访问 `v.flomoapp.com`。
+- Windows Chrome 的 DevTools 端口监听在 Windows 的 `127.0.0.1`，WSL 里的 `127.0.0.1` 不是同一个网络命名空间，每次抓包都需要绕 PowerShell。
+
+因此后续建议把项目迁移到 Windows 本地目录，用 Windows 版 Codex CLI 继续开发。
+
+### 当前 Git 状态
+
+迁移前仓库位于：
+
+```text
+/root/projects/flomo-mcp
+```
+
+当前分支：
+
+```text
+main
+```
+
+当前提交：
+
+```text
+647c66e docs: record stage 2 acceptance
+a2af52f Initial commit
+```
+
+迁移前工作区状态：
+
+```text
+clean
+```
+
+如果迁移后 `git status` 显示换行符或权限位变化，优先不要提交这些机械差异。先确认 Windows Git 的配置：
+
+```powershell
+git config core.autocrlf false
+git config core.filemode false
+git status --short
+```
+
+### 建议迁移步骤
+
+在 Windows PowerShell 中执行：
+
+```powershell
+mkdir C:\Projects
+Copy-Item -Recurse \\wsl.localhost\Ubuntu\root\projects\flomo-mcp C:\Projects\flomo-mcp
+cd C:\Projects\flomo-mcp
+npm install
+npm run typecheck
+npm test
+npm run build
+git status --short
+git log --oneline --max-count=5
+```
+
+然后在 Windows 项目目录启动 Codex CLI：
+
+```powershell
+cd C:\Projects\flomo-mcp
+codex
+```
+
+### 当前阶段状态
+
+| 阶段 | 状态 | 说明 |
+| --- | --- | --- |
+| 阶段 1：验证 MCP 壳子 | 代码层已具备，人工 MCP 客户端验收待做 | `ping` tool 已注册；此前 `npm run build` 通过 |
+| 阶段 2：抓取读取接口 | 已验收通过 | 已捕获读取请求，并在关闭调试 Chrome 后独立 HTTP GET 复现成功 |
+| 阶段 3：实现 `list_notes` | 未开始 | 关键阻塞是稳定生成 `timestamp/api_key/sign` 等动态 query |
+| 阶段 4：实现 `search_notes` / `get_note` | 骨架已有，真实读取链路未接通 | 当前本地过滤逻辑已有基础测试 |
+| 阶段 5：抓取写入接口 | 未开始 | 用户已明确允许创建真实测试 memo |
+| 阶段 6：实现 `create_note` | 骨架已有，真实写入链路未接通 | 写入成功后需要清理读取缓存 |
+| 阶段 7：健壮性与测试 | 未开始 | 需要补齐真实响应 fixture、错误映射和请求签名测试 |
+| 阶段 8：接入 MCP 客户端 | 未开始 | 等读写链路完成后再做 |
+
+### 已确认的读取接口信息
+
+页面域名：
+
+```text
+https://v.flomoapp.com
+```
+
+读取最近 memo：
+
+```text
+GET /api/v1/memo/latest_updated_desc
+```
+
+增量读取 memo：
+
+```text
+GET /api/v1/memo/updated/
+```
+
+独立复现成功的 endpoint：
+
+```text
+GET /api/v1/memo/updated/
+```
+
+独立复现时使用的 query 参数名：
+
+```text
+limit
+latest_updated_at
+latest_slug
+tz
+timestamp
+api_key
+app_version
+platform
+webp
+sign
+```
+
+独立复现时使用的 header 名称：
+
+```text
+Authorization
+Accept
+Referer
+User-Agent
+device-id
+device-model
+platform
+sec-ch-ua-platform
+sec-ch-ua
+sec-ch-ua-mobile
+```
+
+读取响应结构：
+
+```json
+{
+  "code": 0,
+  "message": "<string>",
+  "data": [
+    {
+      "content": "<html string>",
+      "creator_id": "<number>",
+      "source": "<string>",
+      "tags": "<string or object/array>",
+      "pin": "<number>",
+      "created_at": "<string>",
+      "updated_at": "<string>",
+      "deleted_at": null,
+      "memo_from": "<string>",
+      "slug": "<string>",
+      "linked_count": "<number>",
+      "files": {}
+    }
+  ]
+}
+```
+
+### Windows 侧临时资源
+
+为逆向签名逻辑，已经从 Windows PowerShell 下载过 flomo Web bundle 到：
+
+```text
+C:\Users\Public\flomo-web-js
+```
+
+其中包含：
+
+```text
+runtime.js
+chunk-core.js
+chunk-vendors.js
+index.js
+```
+
+这些文件不属于仓库，不应提交。迁移后可以继续用它们搜索 `timestamp`、`api_key`、`sign`、`device-id` 等关键词；如果担心版本过期，可以重新从页面 HTML 中的 `resource.flomoapp.com/flomo-web/js/...` 地址下载。
+
+曾使用的临时 Chrome profile：
+
+```text
+C:\Users\Public\flomo-mcp-cdp-profile
+```
+
+这个 profile 只用于抓包和验收。它可能保留 flomo 登录态和本地缓存，不应提交、压缩或分享。迁移后可以继续使用，也可以删除后重新登录。
+
+### 用户授权状态
+
+用户已明确允许后续创建真实测试 memo，用于阶段 5/6 写入接口抓包和验收。建议测试 memo 内容保持可识别、可删除：
+
+```text
+MCP 写入测试 2026-05-03
+#flomo #mcp
+```
+
+写入测试仍需遵守安全约束：不输出 Authorization、Cookie、完整请求体中的私人内容，不提交 `.env`。
+
+### Windows 继续开发建议
+
+1. 先逆向签名逻辑。
+   - 搜索 `C:\Users\Public\flomo-web-js` 中的 `timestamp`、`api_key`、`sign`、`device-id`、`md5`。
+   - 目标是实现可测试的签名/query 生成模块。
+
+2. 按 TDD 实现阶段 3。
+   - 先写真实响应结构 fixture 的 parser/read client 测试。
+   - 再接入真实 endpoint 和动态 query。
+   - 通过后更新本日志并提交。
+
+3. 阶段 4 保持本地过滤。
+   - `search_notes` 和 `get_note` 不逆向额外服务端搜索接口。
+   - 基于 `list_notes` 的结果和缓存完成。
+
+4. 阶段 5 抓取写入接口。
+   - 使用 Windows Chrome DevTools Network。
+   - 创建一条明确的测试 memo。
+   - 记录脱敏后的 endpoint、method、payload 字段、headers、响应结构。
+   - 独立 HTTP 复现写入。
+
+5. 阶段 6 实现 `create_note`。
+   - 保持 MCP tool 入参 `{ content, tags? }` 不变。
+   - 根据真实接口决定标签写入正文还是单独字段。
+   - 写入成功后清理读取缓存。
+
+6. 每完成一步都提交 Git。
+   - 推荐提交粒度：设计/计划、读取签名、list_notes、search/get、写入抓包、create_note、健壮性、文档收尾。
+   - 每次提交前运行对应测试；重要阶段运行 `npm run typecheck`、`npm test`、`npm run build`。
+
+### 迁移后首个检查清单
+
+在 Windows 目录启动后先执行：
+
+```powershell
+git status --short
+git log --oneline --max-count=5
+npm run typecheck
+npm test
+npm run build
+```
+
+预期：
+
+```text
+git status --short
+# 无输出
+
+git log --oneline --max-count=2
+647c66e docs: record stage 2 acceptance
+a2af52f Initial commit
+```
+
+如果 `npm install` 后 `package-lock.json` 发生变化，不要直接提交；先确认 Node/npm 版本差异。当前 `package.json` 要求：
+
+```text
+node >=20
+```
+
+### 继续开发的关键风险
+
+- `timestamp/api_key/sign` 的生成逻辑尚未确认，是阶段 3 的首要技术风险。
+- `device-id` 是否必须稳定、是否和签名有关尚未确认。
+- 写入接口尚未抓包，可能额外依赖防重放字段、签名、Cookie 或不同 payload 结构。
+- flomo Web 内部接口不是公开稳定 API，后续实现应集中在 adapter/parser，避免内部字段泄漏到 MCP tool 返回。
