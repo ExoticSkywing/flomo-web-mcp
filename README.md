@@ -1,6 +1,6 @@
-# flomo-mcp
+# flomo-web-mcp
 
-`flomo-mcp` 是一个本地运行的 flomo MCP stdio server。它使用你自己的 flomo Web 登录态凭据，为支持 Model Context Protocol 的客户端提供 memo 读取、搜索、同步和新建能力。
+`flomo-web-mcp` 是一个本地运行的 flomo MCP stdio server。它使用你自己的 flomo Web 登录态凭据，为支持 Model Context Protocol 的客户端提供 memo 读取、搜索、同步和新建能力。
 
 > 本项目不是 flomo 官方项目。它依赖 flomo Web 的内部接口和会话凭据，接口可能变化；请只在你信任的本地环境中运行。
 
@@ -25,7 +25,7 @@
 
 ```mermaid
 flowchart LR
-  Host["MCP 客户端"] -->|启动 stdio server| Server["flomo-mcp"]
+  Host["MCP 客户端"] -->|启动 stdio server| Server["flomo-web-mcp"]
   Server -->|读取 env| Config["本地配置<br/>FLOMO_AUTHORIZATION 等"]
   Server -->|注册工具| Tools["MCP 工具<br/>list / sync / search / get / create"]
   Host -->|调用工具| Tools
@@ -48,20 +48,20 @@ flowchart LR
 ### 通过 npm 安装
 
 ```bash
-npm install -g flomo-mcp
+npm install -g flomo-web-mcp
 ```
 
 安装后 MCP server 命令为：
 
 ```bash
-flomo-mcp
+flomo-web-mcp
 ```
 
 ### 通过源码运行
 
 ```bash
-git clone <your-repo-url> flomo-mcp
-cd flomo-mcp
+git clone <your-repo-url> flomo-web-mcp
+cd flomo-web-mcp
 npm install
 npm run build
 ```
@@ -100,7 +100,7 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
 {
   "mcpServers": {
     "flomo": {
-      "command": "flomo-mcp",
+      "command": "flomo-web-mcp",
       "args": [],
       "env": {
         "FLOMO_AUTHORIZATION": "Bearer your-token-here",
@@ -123,7 +123,7 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
   "mcpServers": {
     "flomo": {
       "command": "node",
-      "args": ["D:/Projects/flomo-mcp/dist/index.js"],
+      "args": ["D:/Projects/flomo-web-mcp/dist/index.js"],
       "env": {
         "FLOMO_AUTHORIZATION": "Bearer your-token-here",
         "FLOMO_BASE_URL": "https://flomoapp.com",

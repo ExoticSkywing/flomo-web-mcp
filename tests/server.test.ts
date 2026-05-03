@@ -14,7 +14,7 @@ describe("createFlomoMcpServer", () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createFlomoMcpServer(makeConfig());
     const client = new Client({
-      name: "flomo-mcp-test",
+      name: "flomo-web-mcp-test",
       version: "0.0.0",
     });
 
@@ -39,7 +39,7 @@ describe("createFlomoMcpServer", () => {
 
       expect(payload).toMatchObject({
         ok: true,
-        name: "flomo-mcp",
+        name: "flomo-web-mcp",
         version: "0.1.0",
       });
     } finally {
@@ -51,11 +51,11 @@ describe("createFlomoMcpServer", () => {
   it("marks search and get results as recent-only scoped", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = new McpServer({
-      name: "flomo-mcp-tool-test",
+      name: "flomo-web-mcp-tool-test",
       version: "0.0.0",
     });
     const client = new Client({
-      name: "flomo-mcp-tool-client",
+      name: "flomo-web-mcp-tool-client",
       version: "0.0.0",
     });
     const readClient = {
@@ -133,11 +133,11 @@ describe("createFlomoMcpServer", () => {
   it("syncs all notes without returning memo contents and searches the synced cache when requested", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = new McpServer({
-      name: "flomo-mcp-sync-tool-test",
+      name: "flomo-web-mcp-sync-tool-test",
       version: "0.0.0",
     });
     const client = new Client({
-      name: "flomo-mcp-sync-tool-client",
+      name: "flomo-web-mcp-sync-tool-client",
       version: "0.0.0",
     });
     const readClient = {

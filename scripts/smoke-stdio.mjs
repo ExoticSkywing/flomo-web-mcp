@@ -4,7 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 const expectedTools = ["create_note", "get_note", "list_notes", "ping", "search_notes", "sync_notes"];
 
 const client = new Client({
-  name: "flomo-mcp-stdio-smoke",
+  name: "flomo-web-mcp-stdio-smoke",
   version: "0.0.0",
 });
 

@@ -1,5 +1,5 @@
 {
-  "name": "flomo-mcp",
+  "name": "flomo-web-mcp",
   "version": "0.1.0",
   "type": "module",
   "description": "Self-hosted flomo MCP server based on flomo web session credentials.",
@@ -12,7 +12,7 @@
     "stdio"
   ],
   "bin": {
-    "flomo-mcp": "./dist/index.js"
+    "flomo-web-mcp": "./dist/index.js"
   },
   "files": [
     "dist",

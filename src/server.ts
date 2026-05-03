@@ -12,7 +12,7 @@ import { registerSyncNotesTool } from "./tools/syncNotes.js";
 
 export function createFlomoMcpServer(config: EnvConfig): McpServer {
   const server = new McpServer({
-    name: "flomo-mcp",
+    name: "flomo-web-mcp",
     version: "0.1.0",
   });
 
@@ -23,7 +23,7 @@ export function createFlomoMcpServer(config: EnvConfig): McpServer {
   server.tool("ping", "Check whether the flomo MCP server is reachable.", {}, async () =>
     jsonToolResponse({
       ok: true,
-      name: "flomo-mcp",
+      name: "flomo-web-mcp",
       version: "0.1.0",
     }),
   );

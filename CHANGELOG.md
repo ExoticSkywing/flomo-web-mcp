@@ -16,5 +16,5 @@ This project follows short Conventional Commit style summaries in Git history.
 
 ### Notes
 
-- `flomo-mcp` is not an official flomo project.
+- `flomo-web-mcp` is not an official flomo project.
 - flomo Web endpoints are internal and may change.
