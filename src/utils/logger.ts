@@ -50,8 +50,16 @@ function redactRecord(meta: Record<string, unknown>): Record<string, unknown> {
 }
 
 function redactValue(key: string, value: unknown): unknown {
-  if (isSecretKey(key) && typeof value === "string") {
-    return maskSecret(value);
+  if (isSecretKey(key)) {
+    if (typeof value === "string") {
+      return maskSecret(value);
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => redactValue(key, item));
+    }
+
+    return "***";
   }
 
   if (Array.isArray(value)) {

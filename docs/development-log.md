@@ -686,6 +686,7 @@ npm test -- tests/logger.test.ts
 - 新增 `getFlomoTz(timezone, date)`，按 IANA timezone 计算 flomo Web 使用的 `hours:minutes` offset，读写签名参数均改为使用 `FLOMO_TIMEZONE`。
 - `loadEnv()` 会在启动阶段校验 `FLOMO_TIMEZONE` 是否为有效 IANA timezone。
 - `normalizeTags()` 增强 object-map 与嵌套 object/array 兼容。
+- `createLogger()` 继续补强 secret 字段脱敏：数组值逐项脱敏，对象值整体替换，避免 `token.value` 一类结构泄露。
 - 补充 MCP in-memory smoke test，验证 server 可由 SDK Client 连接、列出 `ping/list_notes/search_notes/get_note/create_note`，并可调用 `ping` tool。
 - README、`.env.example` 和开发流程说明已更新为 V1 完成状态。
 
@@ -704,7 +705,7 @@ npm audit --audit-level=moderate
 
 ```text
 typecheck: passed
-tests: 8 files, 22 cases passed
+tests: 8 files, 23 cases passed
 build: passed
 audit: 0 vulnerabilities
 ```
