@@ -759,3 +759,32 @@ audit: 0 vulnerabilities
 stdioTools=create_note,get_note,list_notes,ping,search_notes
 pingOk=true
 ```
+
+## 2026-05-03：维护阶段统一验收脚本
+
+### 背景
+
+V1 阶段已经完成，后续进入 flomo Web 内部接口变化时的维护阶段。此前完整验收需要手工依次运行类型检查、测试、构建、stdio smoke 和依赖审计，容易漏掉其中一步。
+
+### 已完成改动
+
+- 新增 `scripts/smoke-stdio.mjs`，复用 SDK `StdioClientTransport` 启动构建产物，验证工具列表和 `ping`。
+- 新增 `npm run smoke:stdio`。
+- 新增 `npm run verify`，串联 `typecheck`、`test`、`build`、`smoke:stdio` 和 `npm audit --audit-level=moderate`。
+- README 和开发流程文档改为推荐 `npm run verify` 作为完整验收入口。
+
+### 验证证据
+
+```text
+npm run verify
+```
+
+结果：
+
+```text
+typecheck: passed
+tests: 8 files, 23 cases passed
+build: passed
+smoke:stdio: stdioTools=create_note,get_note,list_notes,ping,search_notes; pingOk=true
+audit: 0 vulnerabilities
+```

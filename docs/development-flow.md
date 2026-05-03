@@ -267,10 +267,10 @@ Mermaid 源码：[`create-note-sequence.mmd`](assets/development-flow/create-not
 常规验证命令：
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+npm run verify
 ```
+
+`verify` 会依次执行类型检查、Vitest、构建、stdio MCP smoke test 和 `npm audit --audit-level=moderate`。
 
 必要时增加人工回归：
 

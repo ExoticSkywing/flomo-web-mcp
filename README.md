@@ -53,6 +53,14 @@ npm start
 npm test
 ```
 
+完整验收：
+
+```bash
+npm run verify
+```
+
+`verify` 会依次执行类型检查、单元测试、构建、stdio MCP smoke test 和中等以上级别的依赖审计。
+
 ## 抓取 Authorization
 
 1. 浏览器登录 flomo Web。
@@ -109,4 +117,4 @@ npm test
 2. DevTools 抓取最近 memo 请求，填充读取 adapter。已完成当前签名规则适配。
 3. 用真实凭据通过 MCP 客户端验收 `list_notes`、`search_notes`、`get_note`。已完成。
 4. DevTools 抓取新建 memo 请求，填充写入 adapter。已完成当前签名 body 适配。
-5. 加入更完整的集成测试与错误映射。已完成首版覆盖，包括 MCP in-memory smoke test。
+5. 加入更完整的集成测试与错误映射。已完成首版覆盖，包括 MCP in-memory smoke test 和 `npm run smoke:stdio`。
