@@ -4,7 +4,7 @@
 
 ## 状态
 
-当前工程已经搭好 MCP stdio 外壳、工具注册、配置读取、parser、标签处理、错误类型和测试骨架。flomo Web 内部读取/写入接口尚未固化，必须先用浏览器 DevTools 抓包确认 `FLOMO_READ_ENDPOINT` 与 `FLOMO_WRITE_ENDPOINT`，再补齐 adapter 的请求细节。
+当前工程已经搭好 MCP stdio 外壳、工具注册、配置读取、parser、标签处理、错误类型和测试骨架。读取 adapter 已按当前 flomo Web 规则实现动态 query，并默认请求 `/api/v1/memo/latest_updated_desc`；写入 adapter 已按当前 Web 规则实现 `PUT /api/v1/memo` 和签名 JSON body。
 
 完整开发流程见 [开发流程文档](docs/development-flow.md)。
 
@@ -56,20 +56,19 @@ npm test
 
 读取最近 memo：
 
-- 请求 URL 和方法
-- 必要 headers
-- Query 参数
-- 返回体中 memo 数组字段
-- memo 的稳定标识字段
-- 分页字段
+- 如当前默认路径失效，重新确认请求 URL 和方法
+- 必要 headers 是否变化
+- `timestamp/api_key/sign` 之外是否新增动态参数
+- 返回体中 memo 数组字段是否仍为 `data`
+- memo 的稳定标识字段是否仍为 `slug`
 
 新建 memo：
 
-- 请求 URL 和方法
-- Request Payload
-- 是否依赖 Cookie
-- 是否有时间戳、签名、防重放字段
-- 成功响应中 memo 所在字段
+- 如当前默认路径失效，重新确认请求 URL 和方法
+- Request Payload 是否仍包含 `content/created_at/source/memo_from/file_ids/tz`
+- `timestamp/api_key/sign` 签名规则是否变化
+- 是否新增 Cookie、防重放字段或其它动态 header
+- 成功响应中 memo 所在字段是否仍为 `data`
 
 ## MCP 客户端配置示例
 
@@ -84,6 +83,7 @@ npm test
       "env": {
         "FLOMO_AUTHORIZATION": "Bearer xxxxxxxxxxxxxxxxx",
         "FLOMO_BASE_URL": "https://flomoapp.com",
+        "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
         "FLOMO_TIMEZONE": "Asia/Shanghai"
       }
     }
@@ -94,7 +94,7 @@ npm test
 ## Roadmap
 
 1. 打通 `ping` 并确认 MCP 宿主可加载。
-2. DevTools 抓取最近 memo 请求，填充读取 adapter。
-3. 打通 `list_notes`、`search_notes`、`get_note`。
-4. DevTools 抓取新建 memo 请求，填充写入 adapter。
-5. 加入更完整的集成测试与缓存策略。
+2. DevTools 抓取最近 memo 请求，填充读取 adapter。已完成当前签名规则适配。
+3. 用真实凭据通过 MCP 客户端验收 `list_notes`、`search_notes`、`get_note`。已完成。
+4. DevTools 抓取新建 memo 请求，填充写入 adapter。已完成当前签名 body 适配。
+5. 加入更完整的集成测试与错误映射。已完成首版覆盖。

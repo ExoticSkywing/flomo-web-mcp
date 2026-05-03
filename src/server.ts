@@ -17,7 +17,7 @@ export function createFlomoMcpServer(config: EnvConfig): McpServer {
 
   const httpClient = new FlomoHttpClient(config);
   const readClient = new BearerFlomoReadClient(config, httpClient);
-  const writeClient = new BearerFlomoWriteClient(config, httpClient);
+  const writeClient = new BearerFlomoWriteClient(config, httpClient, () => readClient.clearCache());
 
   server.tool("ping", "Check whether the flomo MCP server is reachable.", {}, async () =>
     jsonToolResponse({

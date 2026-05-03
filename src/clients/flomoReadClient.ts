@@ -3,11 +3,13 @@ import type { Memo } from "../models/memo.js";
 import { parseMemo } from "../parsers/memoParser.js";
 import type { FlomoReadClient } from "../types/flomo.js";
 import { FlomoRequestError } from "../utils/errors.js";
+import { appendQueryString, buildFlomoWebQuery, getLocalFlomoTz } from "./flomoWeb.js";
 import type { FlomoHttpClient } from "./http.js";
 
 const CACHE_TTL_MS = 45_000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+const DEFAULT_READ_ENDPOINT = "/api/v1/memo/latest_updated_desc";
 
 export class BearerFlomoReadClient implements FlomoReadClient {
   private cache?: { expiresAt: number; items: Memo[] };
@@ -37,21 +39,30 @@ export class BearerFlomoReadClient implements FlomoReadClient {
       return this.cache.items;
     }
 
-    if (!this.config.readEndpoint) {
-      throw new FlomoRequestError(
-        "REMOTE_CHANGED",
-        "未配置 FLOMO_READ_ENDPOINT，请先用 DevTools 抓取 flomo 最近 memo 的内部接口。",
-      );
-    }
-
-    const raw = await this.httpClient.requestJson<unknown>(this.config.readEndpoint);
+    const endpoint = this.buildReadEndpoint(this.config.readEndpoint ?? DEFAULT_READ_ENDPOINT);
+    const raw = await this.httpClient.requestJson<unknown>(endpoint);
     const rawItems = extractMemoArray(raw);
-    const items = rawItems.map((item) => parseMemo(item, this.config.baseUrl));
+    const items = rawItems.map((item) => parseMemo(item, this.config.webBaseUrl ?? this.config.baseUrl));
     this.cache = {
       expiresAt: Date.now() + CACHE_TTL_MS,
       items,
     };
     return items;
+  }
+
+  clearCache(): void {
+    this.cache = undefined;
+  }
+
+  private buildReadEndpoint(endpoint: string): string {
+    if (/[?&]sign=/.test(endpoint)) {
+      return endpoint;
+    }
+
+    const params = buildFlomoWebQuery({
+      tz: getLocalFlomoTz(),
+    });
+    return appendQueryString(endpoint, params);
   }
 }
 

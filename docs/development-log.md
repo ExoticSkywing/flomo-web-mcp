@@ -488,7 +488,164 @@ node >=20
 
 ### 继续开发的关键风险
 
-- `timestamp/api_key/sign` 的生成逻辑尚未确认，是阶段 3 的首要技术风险。
-- `device-id` 是否必须稳定、是否和签名有关尚未确认。
-- 写入接口尚未抓包，可能额外依赖防重放字段、签名、Cookie 或不同 payload 结构。
+- `timestamp/api_key/sign` 的生成逻辑已在后续阶段 3 适配中确认；剩余风险是 flomo Web bundle 更新后规则变化。
+- `device-id` 已支持从配置传入或运行期生成；是否必须与浏览器原始登录态长期绑定仍需更多真实使用验证。
+- 写入接口已在后续阶段 5/6 适配中确认；剩余风险是 flomo Web bundle 更新后 endpoint、payload 或签名规则变化。
 - flomo Web 内部接口不是公开稳定 API，后续实现应集中在 adapter/parser，避免内部字段泄漏到 MCP tool 返回。
+
+## 2026-05-03：阶段 3 读取签名适配与阶段 4 本地过滤测试
+
+### 本轮结论
+
+已静态分析 `C:\Users\Public\flomo-web-js` 中的 flomo Web bundle，确认当前 Web 请求参数构造逻辑：
+
+- `timestamp` 使用当前 Unix 秒。
+- `api_key` 为 `flomo_web`。
+- `app_version` 为 `4.0`。
+- `platform` 为 `web`。
+- 支持 WebP 时追加 `webp=1`。
+- `sign` 为按 key 排序后的参数串追加固定盐后做 MD5。
+
+读取 adapter 已新增动态签名 query 生成，默认读取 endpoint 为：
+
+```text
+/api/v1/memo/latest_updated_desc
+```
+
+如果用户配置的 `FLOMO_READ_ENDPOINT` 已带 `sign`，adapter 会保留该完整 endpoint，不重复追加签名参数。
+
+### 已完成改动
+
+- 新增 `src/clients/flomoWeb.ts`，集中实现 flomo Web query、签名和 query string 拼接。
+- `BearerFlomoReadClient` 默认使用已知读取 endpoint，并追加 `tz/timestamp/api_key/app_version/platform/webp/sign`。
+- `FlomoHttpClient` 增加 flomo Web 常见 headers：`platform`、`device-model`、`device-id`。
+- `loadEnv()` 支持 `FLOMO_WEB_BASE_URL`，将 API base 与 Web 来源/memo URL 拆开；也支持可选 `FLOMO_DEVICE_ID`、`FLOMO_DEVICE_MODEL`、`FLOMO_WEB_PLATFORM`，未提供 device id 时运行期生成一个 UUID。
+- 补充 `tests/flomoWeb.test.ts`，用固定样例锁定签名结果。
+- 补充 `tests/httpClient.test.ts` 和 `tests/readClient.test.ts`，覆盖 Web 来源 headers、真实 `{ code, message, data }` 响应解析、默认签名 endpoint、`search`/`getBySlug` 本地过滤和缓存。
+
+### 验证证据
+
+```text
+npm run typecheck
+npm test
+npm run build
+```
+
+本轮最终验证通过：类型检查、10 个 Vitest 用例和构建均成功。
+
+使用 `C:\Users\Public\flomo-mcp-cdp-profile` 中的 Chrome 登录态做了一次脱敏实测，未输出或写入 Authorization：
+
+```text
+GET /api/v1/memo/latest_updated_desc
+HTTP 200
+code=0
+dataIsArray=true
+memoCount=200
+sampleHasSlug=true
+sampleHasContent=true
+```
+
+随后用构建后的 `BearerFlomoReadClient` 走实际 adapter 读取 5 条：
+
+```text
+itemCount=5
+sampleHasSlug=true
+sampleHasContent=true
+sampleUrlUsesWebBase=true
+```
+
+### 后续状态更新
+
+阶段 5/6 已在同日后续工作中完成，见下一节。`FLOMO_BASE_URL` 保持 `https://flomoapp.com` 作为 API origin，`FLOMO_WEB_BASE_URL` 默认 `https://v.flomoapp.com` 用于 Web 来源 headers 和 memo URL。
+
+## 2026-05-03：阶段 5-8 写入适配、健壮性和 MCP 验收
+
+### 写入抓包与复现结论
+
+静态分析 flomo Web bundle 并用 Chrome 登录态做脱敏复现后，确认当前新建 memo 请求为：
+
+```text
+PUT /api/v1/memo
+```
+
+JSON body 字段：
+
+```text
+content
+created_at
+source
+memo_from
+file_ids
+tz
+timestamp
+api_key
+app_version
+platform
+webp
+sign
+```
+
+本次复现没有观察到写入必须依赖 Cookie。`content` 使用 flomo Web HTML 片段，标签写入正文段落。
+
+### 已完成改动
+
+- `BearerFlomoWriteClient` 默认使用 `/api/v1/memo`，方法改为 `PUT`。
+- 写入 payload 改为 flomo Web 签名 JSON body，包含 `created_at/source/memo_from/file_ids/tz`。
+- `formatCreateContent()` 将纯文本转换为 `<p>...</p>`，并把 tags 规范化后追加为标签段落；已有 HTML 内容会保留。
+- 写入成功后通过 server 注入的回调清理读取缓存，避免新建后 `list_notes/search_notes/get_note` 命中旧缓存。
+- `FlomoHttpClient` 补充 HTTP/API 错误映射：`AUTH_EXPIRED`、`BAD_REQUEST`、`SIGN_INVALID`、`RATE_LIMITED`、`REMOTE_CHANGED`。
+- 补充写入 client、HTTP 错误映射和 MCP 行为相关测试。
+- 将测试工具链升级到 `vitest@4.1.5`，修复 `vite/esbuild` dev dependency 审计告警。
+
+### 脱敏实测证据
+
+直接复现写入接口：
+
+```text
+method=PUT
+requestPath=/api/v1/memo
+status=200
+code=0
+hasMemoObject=true
+sampleHasSlug=true
+sampleHasContent=true
+```
+
+使用构建后的 `BearerFlomoWriteClient`：
+
+```text
+adapterCreateAttempted=true
+hasSlug=true
+hasContent=true
+hasTags=true
+urlUsesWebBase=true
+cacheInvalidated=true
+```
+
+使用 MCP stdio 客户端调用构建后的 server：
+
+```text
+toolNames=create_note,get_note,list_notes,ping,search_notes
+pingOk=true
+listOk=true
+createOk=true
+searchOk=true
+getOk=true
+```
+
+最终命令验证：
+
+```text
+npm run typecheck
+npm test
+npm run build
+npm audit --audit-level=moderate
+```
+
+结果：类型检查通过；5 个测试文件、15 个用例通过；构建通过；`npm audit` 返回 0 vulnerabilities。
+
+以上验收未输出或写入 Authorization、Cookie、完整请求体中的私人内容或完整 memo 响应。
+
+### 当前完成状态
+
+首版 V1 的代码层和 MCP stdio 验收已完成：`ping`、`list_notes`、`search_notes`、`get_note`、`create_note` 均可用。后续维护重点是 flomo Web 内部接口变化时只更新 adapter/parser/tests。

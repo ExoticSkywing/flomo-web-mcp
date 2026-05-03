@@ -1,8 +1,97 @@
 import { describe, expect, it } from "vitest";
-import { formatCreateContent } from "../src/clients/flomoWriteClient.js";
+import type { EnvConfig } from "../src/config/env.js";
+import type { FlomoHttpClient } from "../src/clients/http.js";
+import { BearerFlomoWriteClient, formatCreateContent } from "../src/clients/flomoWriteClient.js";
 
 describe("formatCreateContent", () => {
-  it("appends normalized tags after note content", () => {
-    expect(formatCreateContent("MCP 写入测试", ["flomo", "#mcp"])).toBe("MCP 写入测试\n\n#flomo #mcp");
+  it("formats note content and normalized tags as flomo web HTML", () => {
+    expect(formatCreateContent("MCP 写入测试", ["flomo", "#mcp"])).toBe(
+      "<p>MCP 写入测试</p><p>#flomo #mcp</p>",
+    );
+  });
+
+  it("preserves existing HTML content and appends tags as a paragraph", () => {
+    expect(formatCreateContent("<p>Hello</p>", ["mcp"])).toBe("<p>Hello</p><p>#mcp</p>");
   });
 });
+
+describe("BearerFlomoWriteClient", () => {
+  it("creates notes with the default signed flomo web PUT body", async () => {
+    let capturedEndpoint = "";
+    let capturedInit: RequestInit | undefined;
+    const httpClient = {
+      async requestJson(endpoint: string, init?: RequestInit): Promise<unknown> {
+        capturedEndpoint = endpoint;
+        capturedInit = init;
+        return {
+          code: 0,
+          data: {
+            slug: "created-slug",
+            content: "<p>MCP 写入测试</p><p>#flomo #mcp</p>",
+            tags: [],
+            created_at: "2026-05-03 12:00:00",
+            updated_at: "2026-05-03 12:00:01",
+          },
+        };
+      },
+    } as unknown as FlomoHttpClient;
+    let invalidated = false;
+    const client = new BearerFlomoWriteClient(makeConfig(), httpClient, () => {
+      invalidated = true;
+    });
+
+    const memo = await client.create({ content: "MCP 写入测试", tags: ["flomo", "mcp"] });
+
+    expect(memo).toMatchObject({
+      slug: "created-slug",
+      content: "MCP 写入测试\n#flomo #mcp",
+      tags: ["#flomo", "#mcp"],
+      url: "https://v.flomoapp.com/mine/?memo_id=created-slug",
+    });
+    expect(capturedEndpoint).toBe("/api/v1/memo");
+    expect(capturedInit?.method).toBe("PUT");
+    expect(invalidated).toBe(true);
+
+    const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      content: "<p>MCP 写入测试</p><p>#flomo #mcp</p>",
+      source: "web",
+      memo_from: "human",
+      file_ids: [],
+      api_key: "flomo_web",
+      app_version: "4.0",
+      platform: "web",
+      webp: "1",
+    });
+    expect(body.created_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(body.tz).toMatch(/^-?\d+:\d+$/);
+    expect(body.timestamp).toEqual(expect.any(Number));
+    expect(body.sign).toMatch(/^[a-f0-9]{32}$/);
+  });
+
+  it("rejects blank note content before sending a request", async () => {
+    let called = false;
+    const httpClient = {
+      async requestJson(): Promise<unknown> {
+        called = true;
+        return {};
+      },
+    } as unknown as FlomoHttpClient;
+    const client = new BearerFlomoWriteClient(makeConfig(), httpClient);
+
+    await expect(client.create({ content: "   " })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(called).toBe(false);
+  });
+});
+
+function makeConfig(): EnvConfig {
+  return {
+    authorization: "Bearer test",
+    userAgent: "test-agent",
+    baseUrl: "https://flomoapp.com",
+    webBaseUrl: "https://v.flomoapp.com",
+    timezone: "Asia/Shanghai",
+    logLevel: "info",
+    debugRawResponse: false,
+  };
+}
