@@ -52,7 +52,7 @@ describe("BearerFlomoReadClient", () => {
       },
     } as unknown as FlomoHttpClient;
 
-    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+    const client = new BearerFlomoReadClient(makeConfig({ timezone: "UTC" }), httpClient);
 
     const items = await client.list();
 
@@ -69,7 +69,7 @@ describe("BearerFlomoReadClient", () => {
     expect(query.get("api_key")).toBe("flomo_web");
     expect(query.get("app_version")).toBe("4.0");
     expect(query.get("platform")).toBe("web");
-    expect(query.get("tz")).toMatch(/^-?\d+:\d+$/);
+    expect(query.get("tz")).toBe("0:0");
     expect(query.get("timestamp")).toMatch(/^\d+$/);
     expect(query.get("sign")).toMatch(/^[a-f0-9]{32}$/);
   });
@@ -111,7 +111,7 @@ describe("BearerFlomoReadClient", () => {
   });
 });
 
-function makeConfig(): EnvConfig {
+function makeConfig(overrides: Partial<EnvConfig> = {}): EnvConfig {
   return {
     authorization: "Bearer test",
     userAgent: "test-agent",
@@ -120,5 +120,6 @@ function makeConfig(): EnvConfig {
     timezone: "Asia/Shanghai",
     logLevel: "info",
     debugRawResponse: false,
+    ...overrides,
   };
 }

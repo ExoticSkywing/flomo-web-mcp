@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendQueryString, buildFlomoWebQuery } from "../src/clients/flomoWeb.js";
+import { appendQueryString, buildFlomoWebQuery, getFlomoTz } from "../src/clients/flomoWeb.js";
 
 describe("buildFlomoWebQuery", () => {
   it("adds flomo web defaults and signs sorted params", () => {
@@ -39,5 +39,17 @@ describe("appendQueryString", () => {
     });
 
     expect(endpoint).toBe("/api/v1/memo/latest_updated_desc?existing=1&tz=8%3A0&sign=abc123");
+  });
+});
+
+describe("getFlomoTz", () => {
+  it("formats configured IANA timezone offsets for flomo web requests", () => {
+    const winter = new Date("2026-01-15T12:00:00.000Z");
+    const summer = new Date("2026-07-15T12:00:00.000Z");
+
+    expect(getFlomoTz("Asia/Shanghai", winter)).toBe("8:0");
+    expect(getFlomoTz("America/New_York", winter)).toBe("-5:0");
+    expect(getFlomoTz("America/New_York", summer)).toBe("-4:0");
+    expect(getFlomoTz("Asia/Kathmandu", winter)).toBe("5:45");
   });
 });

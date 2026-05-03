@@ -4,7 +4,7 @@ import { parseMemo } from "../parsers/memoParser.js";
 import { normalizeTags } from "../parsers/tagParser.js";
 import type { FlomoWriteClient } from "../types/flomo.js";
 import { FlomoRequestError } from "../utils/errors.js";
-import { buildFlomoWebQuery, getLocalFlomoTz } from "./flomoWeb.js";
+import { buildFlomoWebQuery, getFlomoTz } from "./flomoWeb.js";
 import type { FlomoHttpClient } from "./http.js";
 
 const DEFAULT_WRITE_ENDPOINT = "/api/v1/memo";
@@ -28,7 +28,7 @@ export class BearerFlomoWriteClient implements FlomoWriteClient {
       source: "web",
       memo_from: "human",
       file_ids: [],
-      tz: getLocalFlomoTz(),
+      tz: getFlomoTz(this.config.timezone),
     });
 
     const raw = await this.httpClient.requestJson<unknown>(this.config.writeEndpoint ?? DEFAULT_WRITE_ENDPOINT, {

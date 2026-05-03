@@ -3,7 +3,7 @@ import type { Memo } from "../models/memo.js";
 import { parseMemo } from "../parsers/memoParser.js";
 import type { FlomoReadClient } from "../types/flomo.js";
 import { FlomoRequestError } from "../utils/errors.js";
-import { appendQueryString, buildFlomoWebQuery, getLocalFlomoTz } from "./flomoWeb.js";
+import { appendQueryString, buildFlomoWebQuery, getFlomoTz } from "./flomoWeb.js";
 import type { FlomoHttpClient } from "./http.js";
 
 const CACHE_TTL_MS = 45_000;
@@ -60,7 +60,7 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     }
 
     const params = buildFlomoWebQuery({
-      tz: getLocalFlomoTz(),
+      tz: getFlomoTz(this.config.timezone),
     });
     return appendQueryString(endpoint, params);
   }

@@ -36,4 +36,19 @@ describe("createLogger", () => {
       },
     });
   });
+
+  it("redacts arrays stored under secret metadata keys", () => {
+    const write = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const logger = createLogger("debug");
+
+    logger.debug("tokens", {
+      tokens: ["abcdefghijklmnop", "short"],
+    });
+
+    const entry = JSON.parse(String(write.mock.calls[0]?.[0])) as Record<string, unknown>;
+
+    expect(entry).toMatchObject({
+      tokens: ["abcdefgh...mnop", "***"],
+    });
+  });
 });

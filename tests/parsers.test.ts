@@ -7,6 +7,17 @@ describe("normalizeTags", () => {
     expect(normalizeTags(["知识管理", "#MCP", "MCP", ""])).toEqual(["#知识管理", "#MCP"]);
   });
 
+  it("normalizes tag objects from map and nested shapes", () => {
+    expect(
+      normalizeTags({
+        MCP: true,
+        ignored: false,
+        primary: { name: "知识管理" },
+        extra: ["flomo"],
+      }),
+    ).toEqual(["#MCP", "#知识管理", "#flomo"]);
+  });
+
   it("extracts inline tags from content", () => {
     expect(extractInlineTags("hello #flomo #知识管理")).toEqual(["#flomo", "#知识管理"]);
   });

@@ -43,11 +43,17 @@ export function appendQueryString(endpoint: string, params: FlomoWebParams): str
   return query ? `${endpoint}${separator}${query}` : endpoint;
 }
 
-export function getLocalFlomoTz(): string {
-  const offset = new Date().getTimezoneOffset();
-  const hours = offset <= 0 ? Math.floor(-offset / 60) : Math.ceil(-offset / 60);
-  const minutes = offset <= 0 ? -offset % 60 : offset % 60;
+export function getFlomoTz(timezone: string, date = new Date()): string {
+  const offsetMinutes = getTimeZoneOffsetMinutes(timezone, date);
+  const sign = offsetMinutes < 0 ? -1 : 1;
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const hours = Math.trunc(absoluteOffset / 60) * sign;
+  const minutes = absoluteOffset % 60;
   return `${hours}:${minutes}`;
+}
+
+export function getLocalFlomoTz(): string {
+  return getFlomoTz(Intl.DateTimeFormat().resolvedOptions().timeZone);
 }
 
 function signFlomoWebParams(params: FlomoWebParams): string {
@@ -98,4 +104,29 @@ function toUrlSearchParams(params: FlomoWebParams): URLSearchParams {
 
 function isSignableValue(value: FlomoWebParamValue): value is FlomoWebParamPrimitive | FlomoWebParamPrimitive[] {
   return Array.isArray(value) || Boolean(value) || value === 0;
+}
+
+function getTimeZoneOffsetMinutes(timezone: string, date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  const utcMilliseconds = Date.UTC(
+    Number(values.get("year")),
+    Number(values.get("month")) - 1,
+    Number(values.get("day")),
+    Number(values.get("hour")),
+    Number(values.get("minute")),
+    Number(values.get("second")),
+  );
+
+  return Math.round((utcMilliseconds - date.getTime()) / 60_000);
 }

@@ -1,16 +1,16 @@
 # flomo-mcp
 
-一个本地优先的 flomo MCP Server 骨架，用于无 flomo Pro 场景下基于网页登录态封装读取与写入能力。
+一个本地优先的 flomo MCP Server，用于无 flomo Pro 场景下基于网页登录态封装读取与写入能力。
 
 ## 状态
 
-当前工程已经搭好 MCP stdio 外壳、工具注册、配置读取、parser、标签处理、错误类型和测试骨架。读取 adapter 已按当前 flomo Web 规则实现动态 query，并默认请求 `/api/v1/memo/latest_updated_desc`；写入 adapter 已按当前 Web 规则实现 `PUT /api/v1/memo` 和签名 JSON body。
+V1 已完成 MCP stdio 外壳、工具注册、配置读取、parser、标签处理、错误映射、读写 adapter 和测试覆盖。读取 adapter 已按当前 flomo Web 规则实现动态 query，并默认请求 `/api/v1/memo/latest_updated_desc`；写入 adapter 已按当前 Web 规则实现 `PUT /api/v1/memo` 和签名 JSON body。
 
 完整开发流程见 [开发流程文档](docs/development-flow.md)。
 
 实际推进记录见 [开发日志](docs/development-log.md)。
 
-首版工具目标：
+已注册工具：
 
 - `ping`
 - `list_notes`
@@ -52,13 +52,13 @@ npm test
 5. 从 Request Headers 复制 `Authorization: Bearer ...`。
 6. 写入本地 `.env` 的 `FLOMO_AUTHORIZATION`。
 
-## 抓包待确认项
+## 接口变化维护检查项
 
 读取最近 memo：
 
 - 如当前默认路径失效，重新确认请求 URL 和方法
 - 必要 headers 是否变化
-- `timestamp/api_key/sign` 之外是否新增动态参数
+- `tz/timestamp/api_key/sign` 之外是否新增动态参数
 - 返回体中 memo 数组字段是否仍为 `data`
 - memo 的稳定标识字段是否仍为 `slug`
 
@@ -97,4 +97,4 @@ npm test
 2. DevTools 抓取最近 memo 请求，填充读取 adapter。已完成当前签名规则适配。
 3. 用真实凭据通过 MCP 客户端验收 `list_notes`、`search_notes`、`get_note`。已完成。
 4. DevTools 抓取新建 memo 请求，填充写入 adapter。已完成当前签名 body 适配。
-5. 加入更完整的集成测试与错误映射。已完成首版覆盖。
+5. 加入更完整的集成测试与错误映射。已完成首版覆盖，包括 MCP in-memory smoke test。

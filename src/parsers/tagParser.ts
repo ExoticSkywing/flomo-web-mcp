@@ -41,7 +41,16 @@ function toTagStrings(input: unknown): string[] {
 
   if (isRecord(input)) {
     const name = input.name ?? input.title ?? input.text ?? input.label;
-    return typeof name === "string" ? [name] : [];
+    if (typeof name === "string") {
+      return [name];
+    }
+
+    return Object.entries(input).flatMap(([key, value]) => {
+      if (value === true) {
+        return [key];
+      }
+      return toTagStrings(value);
+    });
   }
 
   return [];

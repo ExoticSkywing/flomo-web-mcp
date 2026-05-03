@@ -43,6 +43,8 @@ const defaultDeviceId = randomUUID();
 export function loadEnv(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const parsed = EnvSchema.parse(env);
   const logLevel = LogLevelSchema.safeParse(parsed.LOG_LEVEL);
+  const timezone = parsed.FLOMO_TIMEZONE?.trim() || "Asia/Shanghai";
+  validateTimezone(timezone);
 
   return {
     authorization: emptyToUndefined(parsed.FLOMO_AUTHORIZATION),
@@ -50,7 +52,7 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     userAgent: parsed.FLOMO_USER_AGENT?.trim() || "Mozilla/5.0",
     baseUrl: trimTrailingSlash(parsed.FLOMO_BASE_URL?.trim() || "https://flomoapp.com"),
     webBaseUrl: trimTrailingSlash(parsed.FLOMO_WEB_BASE_URL?.trim() || "https://v.flomoapp.com"),
-    timezone: parsed.FLOMO_TIMEZONE?.trim() || "Asia/Shanghai",
+    timezone,
     logLevel: logLevel.success ? logLevel.data : "info",
     readEndpoint: emptyToUndefined(parsed.FLOMO_READ_ENDPOINT),
     writeEndpoint: emptyToUndefined(parsed.FLOMO_WRITE_ENDPOINT),
@@ -68,4 +70,12 @@ function emptyToUndefined(value: string | undefined): string | undefined {
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function validateTimezone(timezone: string): void {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+  } catch (error) {
+    throw new Error(`FLOMO_TIMEZONE 不是有效的 IANA timezone：${timezone}`, { cause: error });
+  }
 }

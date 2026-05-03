@@ -669,3 +669,49 @@ npm test -- tests/logger.test.ts
 ```
 
 结果：新增 logger 测试通过。完整验证见本轮最终命令输出。
+
+## 2026-05-03：V1 收尾审计与自动化验收补强
+
+### 背景
+
+按 `docs/development-flow.md` 的完成定义重新审计后，核心读写链路已完成，但仍有几项收尾风险适合固化到代码和测试：
+
+- `FLOMO_TIMEZONE` 已进入 header，但签名参数 `tz` 仍跟随机器本地时区。
+- `tags` 已记录为可能出现 object 形态，但测试只覆盖 string 和 array。
+- MCP 客户端可加载 server、列出工具和调用 `ping` 的验收此前主要依赖人工记录。
+- 无效 timezone 配置会延迟到真实请求时才暴露。
+
+### 已完成改动
+
+- 新增 `getFlomoTz(timezone, date)`，按 IANA timezone 计算 flomo Web 使用的 `hours:minutes` offset，读写签名参数均改为使用 `FLOMO_TIMEZONE`。
+- `loadEnv()` 会在启动阶段校验 `FLOMO_TIMEZONE` 是否为有效 IANA timezone。
+- `normalizeTags()` 增强 object-map 与嵌套 object/array 兼容。
+- 补充 MCP in-memory smoke test，验证 server 可由 SDK Client 连接、列出 `ping/list_notes/search_notes/get_note/create_note`，并可调用 `ping` tool。
+- README、`.env.example` 和开发流程说明已更新为 V1 完成状态。
+
+### 验证证据
+
+本轮在提交前重新执行：
+
+```text
+npm run typecheck
+npm test
+npm run build
+npm audit --audit-level=moderate
+```
+
+结果：
+
+```text
+typecheck: passed
+tests: 8 files, 22 cases passed
+build: passed
+audit: 0 vulnerabilities
+```
+
+另用构建后的 `dist/index.js` 做 stdio smoke：
+
+```text
+stdioTools=create_note,get_note,list_notes,ping,search_notes
+pingOk=true
+```

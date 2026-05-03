@@ -1,6 +1,6 @@
 # 开发流程
 
-本文档把 flomo-mcp 的后续开发拆成可执行阶段。当前项目已经完成 MCP 外壳、工具注册、配置读取、parser、错误类型和基础测试；后续工作的重点是把 flomo Web 当前真实读写请求固化到 adapter 层。
+本文档把 flomo-mcp 的开发拆成可执行阶段。V1 已完成 MCP 外壳、工具注册、配置读取、parser、错误类型、读写 adapter 和首版测试覆盖；后续维护重点是在 flomo Web 内部接口变化时更新 adapter、parser 和测试。
 
 ## 工作模型
 

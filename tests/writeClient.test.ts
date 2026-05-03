@@ -36,7 +36,7 @@ describe("BearerFlomoWriteClient", () => {
       },
     } as unknown as FlomoHttpClient;
     let invalidated = false;
-    const client = new BearerFlomoWriteClient(makeConfig(), httpClient, () => {
+    const client = new BearerFlomoWriteClient(makeConfig({ timezone: "UTC" }), httpClient, () => {
       invalidated = true;
     });
 
@@ -64,7 +64,7 @@ describe("BearerFlomoWriteClient", () => {
       webp: "1",
     });
     expect(body.created_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
-    expect(body.tz).toMatch(/^-?\d+:\d+$/);
+    expect(body.tz).toBe("0:0");
     expect(body.timestamp).toEqual(expect.any(Number));
     expect(body.sign).toMatch(/^[a-f0-9]{32}$/);
   });
@@ -84,7 +84,7 @@ describe("BearerFlomoWriteClient", () => {
   });
 });
 
-function makeConfig(): EnvConfig {
+function makeConfig(overrides: Partial<EnvConfig> = {}): EnvConfig {
   return {
     authorization: "Bearer test",
     userAgent: "test-agent",
@@ -93,5 +93,6 @@ function makeConfig(): EnvConfig {
     timezone: "Asia/Shanghai",
     logLevel: "info",
     debugRawResponse: false,
+    ...overrides,
   };
 }

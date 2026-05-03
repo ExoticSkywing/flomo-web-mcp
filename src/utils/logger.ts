@@ -55,7 +55,7 @@ function redactValue(key: string, value: unknown): unknown {
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => redactValue("", item));
+    return value.map((item) => redactValue(key, item));
   }
 
   if (isRecord(value)) {
