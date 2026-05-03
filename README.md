@@ -1,117 +1,58 @@
 # flomo-mcp
 
-一个本地优先的 flomo MCP Server，用于无 flomo Pro 场景下基于网页登录态封装读取与写入能力。
+`flomo-mcp` 是一个本地运行的 flomo MCP stdio server。它基于你自己的 flomo Web 登录态凭据，为支持 Model Context Protocol 的客户端提供 memo 读取、搜索、同步和新建能力。
 
-## 状态
+> 本项目不是 flomo 官方项目。它依赖 flomo Web 的内部接口和会话凭据，接口可能变化；请只在你信任的本地环境中运行。
 
-V1 已完成 MCP stdio 外壳、工具注册、配置读取、parser、标签处理、错误映射、读写 adapter 和测试覆盖。读取 adapter 已按当前 flomo Web 规则实现动态 query，并默认请求 `/api/v1/memo/latest_updated_desc`；写入 adapter 已按当前 Web 规则实现 `PUT /api/v1/memo` 和签名 JSON body。
+## 功能
 
-完整开发流程见 [开发流程文档](docs/development-flow.md)。
+- 通过 stdio 暴露 MCP 工具。
+- 读取最近 memo，按 `slug` 获取 memo。
+- 分页同步 memo 到本地内存缓存，再进行显式全库搜索。
+- 新建 memo。
+- 对敏感 header 和日志做基础脱敏。
+- 提供 TypeScript 类型检查、Vitest 测试、Python 辅助脚本测试、构建、stdio smoke test 和依赖审计。
 
-实际推进记录见 [开发日志](docs/development-log.md)。
+## 要求
 
-已注册工具：
+- Node.js 20 或更高版本。
+- npm。
+- 支持 stdio MCP server 的客户端。
+- 你自己的 flomo Web 会话 `Authorization`，必要时还包括 `Cookie`。
 
-- `ping`
-- `list_notes`：列出最近 memo。
-- `sync_notes`：分页同步 flomo memo 到本地内存缓存，只返回同步统计，不返回全部正文。
-- `search_notes`：默认仍搜索最近 memo；传入 `scope: "all_synced_notes"` 时搜索 `sync_notes` 已同步的本地全库缓存。
-- `get_note`：默认在最近 memo 批次中按 `slug` 定位；传入 `scope: "all_synced_notes"` 时从已同步的本地全库缓存定位。
-- `create_note`
+## 快速开始
 
-## 全量同步边界
-
-本项目不提供“一次性返回全部笔记正文”的工具。需要全库检索时，先调用 `sync_notes` 建立本地缓存，再用 `search_notes` 或 `get_note` 显式指定：
-
-```json
-{
-  "scope": "all_synced_notes"
-}
-```
-
-`sync_notes` 支持 `pageSize`（最大 200）和 `maxPages`（最大 100）。如果达到页数上限但仍可能有更多笔记，返回值中的 `complete` 会是 `false`。
-
-## 安全边界
-
-`FLOMO_AUTHORIZATION` 等同高敏感凭据，不要提交到 Git，不要打印到日志，不要发给第三方。`.env` 已加入 `.gitignore`。
-
-## 本地运行
-
-PowerShell:
+从源码运行：
 
 ```powershell
 npm install
 Copy-Item .env.example .env
+npm run build
+npm run smoke:stdio
+```
+
+编辑 `.env`，至少填入：
+
+```dotenv
+FLOMO_AUTHORIZATION=Bearer your-token-here
+```
+
+开发模式：
+
+```powershell
 npm run dev
 ```
 
-Bash:
+生产模式：
 
-```bash
-npm install
-cp .env.example .env
-npm run dev
-```
-
-构建：
-
-```bash
+```powershell
 npm run build
 npm start
 ```
 
-测试：
+## MCP 客户端配置
 
-```bash
-npm test
-```
-
-完整验收：
-
-```bash
-npm run verify
-```
-
-`verify` 会依次执行类型检查、单元测试、构建、stdio MCP smoke test 和中等以上级别的依赖审计。
-
-## 抓取 Authorization
-
-1. 浏览器登录 flomo Web。
-2. 打开 DevTools 的 Network。
-3. 刷新页面。
-4. 找到 flomo 的 XHR/fetch 请求。
-5. 从 Request Headers 复制 `Authorization: Bearer ...`。
-6. 写入本地 `.env` 的 `FLOMO_AUTHORIZATION`。
-
-## 接口变化维护检查项
-
-读取最近 memo：
-
-- 如当前默认路径失效，重新确认请求 URL 和方法
-- 必要 headers 是否变化
-- `tz/timestamp/api_key/sign` 之外是否新增动态参数
-- 返回体中 memo 数组字段是否仍为 `data`
-- memo 的稳定标识字段是否仍为 `slug`
-
-新建 memo：
-
-- 如当前默认路径失效，重新确认请求 URL 和方法
-- Request Payload 是否仍包含 `content/created_at/source/memo_from/file_ids/tz`
-- `timestamp/api_key/sign` 签名规则是否变化
-- 是否新增 Cookie、防重放字段或其它动态 header
-- 成功响应中 memo 所在字段是否仍为 `data`
-
-全量同步 memo：
-
-- 如当前默认路径失效，重新确认 `/api/v1/memo/updated/` 或对应分页路径
-- 分页参数是否仍为 `limit/latest_updated_at/latest_slug`
-- 终止条件是否仍可通过返回条数、游标或空列表判断
-- 返回体中 memo 数组字段是否仍为 `data`
-- memo 的稳定标识字段是否仍为 `slug`
-
-## MCP 客户端配置示例
-
-先执行 `npm run build`，再把以下命令配置给支持 stdio MCP 的宿主：
+先执行 `npm run build`，然后把以下 stdio server 配置加入 MCP 客户端。路径按你的本地目录调整。
 
 ```json
 {
@@ -120,7 +61,7 @@ npm run verify
       "command": "node",
       "args": ["D:/Vib_Coding_Projects/flomo-mcp/dist/index.js"],
       "env": {
-        "FLOMO_AUTHORIZATION": "Bearer xxxxxxxxxxxxxxxxx",
+        "FLOMO_AUTHORIZATION": "Bearer your-token-here",
         "FLOMO_BASE_URL": "https://flomoapp.com",
         "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
         "FLOMO_TIMEZONE": "Asia/Shanghai",
@@ -131,13 +72,126 @@ npm run verify
 }
 ```
 
-如果项目放在其它目录，把 `args` 改成对应的 `dist/index.js` 绝对路径。当前默认 adapter 已内置读写和同步 endpoint；只有 flomo Web 内部路径变化时才需要设置 `FLOMO_READ_ENDPOINT`、`FLOMO_SYNC_ENDPOINT` 或 `FLOMO_WRITE_ENDPOINT`。
+发布到 npm 后，也可以把命令配置为包入口：
 
-## Roadmap
+```json
+{
+  "mcpServers": {
+    "flomo": {
+      "command": "flomo-mcp",
+      "args": [],
+      "env": {
+        "FLOMO_AUTHORIZATION": "Bearer your-token-here"
+      }
+    }
+  }
+}
+```
 
-1. 打通 `ping` 并确认 MCP 宿主可加载。
-2. DevTools 抓取最近 memo 请求，填充读取 adapter。已完成当前签名规则适配。
-3. 用真实凭据通过 MCP 客户端验收 `list_notes`、`search_notes`、`get_note`。已完成。
-4. DevTools 抓取新建 memo 请求，填充写入 adapter。已完成当前签名 body 适配。
-5. 加入更完整的集成测试与错误映射。已完成首版覆盖，包括 MCP in-memory smoke test 和 `npm run smoke:stdio`。
-6. 增加受控全量同步：`sync_notes` 分页建立本地缓存，`search_notes` / `get_note` 通过显式 scope 读取缓存。已完成首版。
+## 环境变量
+
+| 变量 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `FLOMO_AUTHORIZATION` | 读取/写入时必填 | 无 | flomo Web 请求中的 `Authorization` header。 |
+| `FLOMO_COOKIE` | 可选 | 无 | flomo Web Cookie；只有当前接口要求时再填写。 |
+| `FLOMO_USER_AGENT` | 可选 | `Mozilla/5.0` | 请求 flomo Web 时使用的 User-Agent。 |
+| `FLOMO_BASE_URL` | 可选 | `https://flomoapp.com` | flomo API 基础地址。 |
+| `FLOMO_WEB_BASE_URL` | 可选 | `https://v.flomoapp.com` | flomo Web 基础地址。 |
+| `FLOMO_TIMEZONE` | 可选 | `Asia/Shanghai` | IANA timezone。 |
+| `FLOMO_REQUEST_TIMEOUT_MS` | 可选 | `30000` | flomo Web 请求超时时间，单位毫秒。 |
+| `LOG_LEVEL` | 可选 | `info` | `debug`、`info`、`warn` 或 `error`。 |
+| `FLOMO_READ_ENDPOINT` | 可选 | 内置当前路径 | 仅在 flomo Web 内部读取路径变化时覆盖。 |
+| `FLOMO_SYNC_ENDPOINT` | 可选 | 内置当前路径 | 仅在 flomo Web 内部同步路径变化时覆盖。 |
+| `FLOMO_WRITE_ENDPOINT` | 可选 | 内置当前路径 | 仅在 flomo Web 内部写入路径变化时覆盖。 |
+
+完整示例见 [.env.example](.env.example)。
+
+## MCP 工具
+
+| 工具 | 说明 |
+| --- | --- |
+| `ping` | 检查 server 是否可用。 |
+| `list_notes` | 列出最近 memo。 |
+| `sync_notes` | 分页同步 memo 到本地内存缓存，只返回同步统计。 |
+| `search_notes` | 默认搜索最近 memo；传入 `scope: "all_synced_notes"` 时搜索已同步缓存。 |
+| `get_note` | 默认按 `slug` 从最近 memo 定位；传入 `scope: "all_synced_notes"` 时从已同步缓存定位。 |
+| `create_note` | 新建 memo。 |
+
+## 全量同步边界
+
+本项目不提供“一次性返回全部笔记正文”的工具。需要全库检索时，先调用 `sync_notes` 建立本地内存缓存，再用 `search_notes` 或 `get_note` 显式指定：
+
+```json
+{
+  "scope": "all_synced_notes"
+}
+```
+
+`sync_notes` 支持 `pageSize`（最大 200）和 `maxPages`（最大 100）。如果达到页数上限但仍可能有更多笔记，返回值中的 `complete` 会是 `false`。
+
+## 抓取 Authorization
+
+1. 浏览器登录 flomo Web。
+2. 打开 DevTools 的 Network。
+3. 刷新页面。
+4. 找到 flomo 的 XHR/fetch 请求。
+5. 从 Request Headers 复制 `Authorization: Bearer ...`。
+6. 写入本地 `.env` 或 MCP 客户端配置中的 `FLOMO_AUTHORIZATION`。
+
+不要把 Authorization、Cookie、原始 memo 内容或 flomo 响应日志提交到 Git，也不要发给第三方。
+
+## 验证
+
+开发和发布前运行：
+
+```bash
+npm run typecheck
+npm run typecheck:test
+npm test
+npm run test:python
+npm run build
+npm run smoke:stdio
+npm audit --audit-level=moderate
+```
+
+也可以一次运行：
+
+```bash
+npm run verify
+```
+
+检查 npm 发布内容：
+
+```bash
+npm pack --dry-run
+```
+
+## 从源码发布准备
+
+当前包入口是 `bin.flomo-mcp -> ./dist/index.js`，发布前需要先构建：
+
+```bash
+npm run build
+npm pack --dry-run
+```
+
+确认包内容不包含 `.env`、`node_modules`、`coverage` 或私密 memo 数据后，再执行 npm 发布流程。
+
+## flomo Web 接口维护
+
+flomo Web endpoint 是内部接口，可能变化。当前 adapter 内置读写和同步 endpoint；只有路径或签名规则变化时才需要设置 `FLOMO_READ_ENDPOINT`、`FLOMO_SYNC_ENDPOINT` 或 `FLOMO_WRITE_ENDPOINT`。
+
+维护检查项：
+
+- 读取最近 memo：确认请求 URL、方法、必要 headers、动态参数、返回体 memo 数组字段和稳定标识字段。
+- 新建 memo：确认 payload、签名规则、必要 Cookie、防重放字段和成功响应结构。
+- 全量同步 memo：确认分页路径、分页参数、终止条件、memo 数组字段和稳定标识字段。
+
+## 开发文档
+
+- [开发流程文档](docs/development-flow.md)
+- [开发日志](docs/development-log.md)
+
+## 许可证
+
+MIT，见 [LICENSE](LICENSE)。

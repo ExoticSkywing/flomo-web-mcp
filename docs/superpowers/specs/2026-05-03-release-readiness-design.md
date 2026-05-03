@@ -14,7 +14,7 @@ Use a complete but conservative delivery standard:
 
 - Keep the existing TypeScript MCP server architecture unchanged.
 - Treat `dist/` as the npm runtime artifact produced by `npm run build`, not as committed source.
-- Publish only source, docs, scripts, package metadata, and generated build output through npm's package `files` allowlist.
+- Publish only source, public docs, specific scripts, package metadata, and generated build output through npm's package `files` allowlist.
 - Make README user-facing first, with development notes moved behind links to `docs/`.
 - Add GitHub CI and contribution templates so the repository is usable as an open project immediately after upload.
 
@@ -25,7 +25,7 @@ Use a complete but conservative delivery standard:
 - Remove `private: true`.
 - Add `license`.
 - Add search-friendly keywords for MCP, flomo, TypeScript, and stdio.
-- Add npm package `files` entries that include `dist`, source, docs, scripts, README, license, and environment example while excluding local credentials and dependency folders.
+- Add npm package `files` entries that include `dist`, source, public docs, specific scripts, README, license, and environment example while excluding local credentials, dependency folders, Python bytecode, and internal planning docs.
 - Keep the current `bin.flomo-mcp` entry pointing to `./dist/index.js`.
 - Avoid fake repository, bugs, or homepage URLs if the final GitHub remote URL is not known.
 

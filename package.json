@@ -1,12 +1,33 @@
 {
   "name": "flomo-mcp",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Self-hosted flomo MCP server based on flomo web session credentials.",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "flomo",
+    "typescript",
+    "stdio"
+  ],
   "bin": {
     "flomo-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "src",
+    "scripts/extract_flomo_authorization.py",
+    "scripts/extract_flomo_authorization_test.py",
+    "scripts/smoke-stdio.mjs",
+    "docs/assets/development-flow",
+    "docs/development-flow.md",
+    "docs/development-log.md",
+    ".env.example",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
@@ -16,6 +37,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "smoke:stdio": "node scripts/smoke-stdio.mjs",
+    "prepack": "npm run build",
     "verify": "npm run typecheck && npm run typecheck:test && npm test && npm run test:python && npm run build && npm run smoke:stdio && npm audit --audit-level=moderate"
   },
   "engines": {
