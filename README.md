@@ -1,17 +1,40 @@
 # flomo-mcp
 
-`flomo-mcp` 是一个本地运行的 flomo MCP stdio server。它基于你自己的 flomo Web 登录态凭据，为支持 Model Context Protocol 的客户端提供 memo 读取、搜索、同步和新建能力。
+`flomo-mcp` 是一个本地运行的 flomo MCP stdio server。它使用你自己的 flomo Web 登录态凭据，为支持 Model Context Protocol 的客户端提供 memo 读取、搜索、同步和新建能力。
 
 > 本项目不是 flomo 官方项目。它依赖 flomo Web 的内部接口和会话凭据，接口可能变化；请只在你信任的本地环境中运行。
 
+## 风险声明
+
+使用本项目即表示你理解并接受以下风险：
+
+- 本项目由社区开发者维护，不代表 flomo 官方，也不获得 flomo 官方背书或服务承诺。
+- 本项目按“现状”提供，不保证持续可用、接口稳定、数据完整性或适配所有 MCP 客户端。
+- 你需要自行确认使用方式符合 flomo 服务条款、所在地区法律法规和所在组织的安全要求。
+- 你自行承担因使用本项目产生的账号异常、凭据泄露、数据丢失、请求失败、服务中断或第三方限制等风险。
+- 在适用法律允许的最大范围内，项目开发者和贡献者不对上述风险造成的直接或间接损失承担责任。
+
 ## 功能
 
-- 通过 stdio 暴露 MCP 工具。
-- 读取最近 memo，按 `slug` 获取 memo。
-- 分页同步 memo 到本地内存缓存，再进行显式全库搜索。
-- 新建 memo。
-- 对敏感 header 和日志做基础脱敏。
-- 提供 TypeScript 类型检查、Vitest 测试、Python 辅助脚本测试、构建、stdio smoke test 和依赖审计。
+- 作为本地 stdio MCP server 运行，可接入支持 MCP 的客户端。
+- 使用你的 flomo Web 会话凭据访问 memo，不需要 flomo Pro。
+- 支持查看最近 memo、按 `slug` 获取单条 memo、创建新 memo。
+- 支持分页同步 memo 到本地内存缓存，并在显式指定范围时执行全库搜索或定位。
+
+## 运行流程
+
+```mermaid
+flowchart LR
+  Host["MCP 客户端"] -->|启动 stdio server| Server["flomo-mcp"]
+  Server -->|读取 env| Config["本地配置<br/>FLOMO_AUTHORIZATION 等"]
+  Server -->|注册工具| Tools["MCP 工具<br/>list / sync / search / get / create"]
+  Host -->|调用工具| Tools
+  Tools -->|请求 flomo Web| Flomo["flomo Web 内部接口"]
+  Flomo -->|返回 memo 数据| Parser["解析与错误映射"]
+  Parser -->|返回 MCP 响应| Host
+  Tools -->|sync_notes| Cache["本地内存缓存"]
+  Cache -->|search_notes / get_note<br/>scope: all_synced_notes| Tools
+```
 
 ## 要求
 
@@ -20,39 +43,80 @@
 - 支持 stdio MCP server 的客户端。
 - 你自己的 flomo Web 会话 `Authorization`，必要时还包括 `Cookie`。
 
-## 快速开始
+## 安装
 
-从源码运行：
+### 通过 npm 安装
 
-```powershell
-npm install
-Copy-Item .env.example .env
-npm run build
-npm run smoke:stdio
+```bash
+npm install -g flomo-mcp
 ```
 
-编辑 `.env`，至少填入：
+安装后 MCP server 命令为：
+
+```bash
+flomo-mcp
+```
+
+### 通过源码运行
+
+```bash
+git clone <your-repo-url> flomo-mcp
+cd flomo-mcp
+npm install
+npm run build
+```
+
+源码方式的运行入口是：
+
+```bash
+node dist/index.js
+```
+
+## 配置凭据
+
+推荐在 MCP 客户端配置中通过 `env` 传入凭据。也可以复制 `.env.example` 为 `.env`，再填写本地凭据：
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+至少需要：
 
 ```dotenv
 FLOMO_AUTHORIZATION=Bearer your-token-here
 ```
 
-开发模式：
-
-```powershell
-npm run dev
-```
-
-生产模式：
-
-```powershell
-npm run build
-npm start
-```
-
 ## MCP 客户端配置
 
-先执行 `npm run build`，然后把以下 stdio server 配置加入 MCP 客户端。路径按你的本地目录调整。
+### npm 全局安装
+
+```json
+{
+  "mcpServers": {
+    "flomo": {
+      "command": "flomo-mcp",
+      "args": [],
+      "env": {
+        "FLOMO_AUTHORIZATION": "Bearer your-token-here",
+        "FLOMO_BASE_URL": "https://flomoapp.com",
+        "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
+        "FLOMO_TIMEZONE": "Asia/Shanghai",
+        "FLOMO_REQUEST_TIMEOUT_MS": "30000"
+      }
+    }
+  }
+}
+```
+
+### 源码构建运行
+
+把 `args` 改成你本地项目的 `dist/index.js` 绝对路径：
 
 ```json
 {
@@ -66,22 +130,6 @@ npm start
         "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
         "FLOMO_TIMEZONE": "Asia/Shanghai",
         "FLOMO_REQUEST_TIMEOUT_MS": "30000"
-      }
-    }
-  }
-}
-```
-
-发布到 npm 后，也可以把命令配置为包入口：
-
-```json
-{
-  "mcpServers": {
-    "flomo": {
-      "command": "flomo-mcp",
-      "args": [],
-      "env": {
-        "FLOMO_AUTHORIZATION": "Bearer your-token-here"
       }
     }
   }
@@ -129,68 +177,21 @@ npm start
 
 `sync_notes` 支持 `pageSize`（最大 200）和 `maxPages`（最大 100）。如果达到页数上限但仍可能有更多笔记，返回值中的 `complete` 会是 `false`。
 
-## 抓取 Authorization
+## 获取 Authorization
 
 1. 浏览器登录 flomo Web。
 2. 打开 DevTools 的 Network。
 3. 刷新页面。
 4. 找到 flomo 的 XHR/fetch 请求。
 5. 从 Request Headers 复制 `Authorization: Bearer ...`。
-6. 写入本地 `.env` 或 MCP 客户端配置中的 `FLOMO_AUTHORIZATION`。
+6. 写入 MCP 客户端配置或本地 `.env` 的 `FLOMO_AUTHORIZATION`。
 
-不要把 Authorization、Cookie、原始 memo 内容或 flomo 响应日志提交到 Git，也不要发给第三方。
+## 安全提醒
 
-## 验证
-
-开发和发布前运行：
-
-```bash
-npm run typecheck
-npm run typecheck:test
-npm test
-npm run test:python
-npm run build
-npm run smoke:stdio
-npm audit --audit-level=moderate
-```
-
-也可以一次运行：
-
-```bash
-npm run verify
-```
-
-检查 npm 发布内容：
-
-```bash
-npm pack --dry-run
-```
-
-## 从源码发布准备
-
-当前包入口是 `bin.flomo-mcp -> ./dist/index.js`，发布前需要先构建：
-
-```bash
-npm run build
-npm pack --dry-run
-```
-
-确认包内容不包含 `.env`、`node_modules`、`coverage` 或私密 memo 数据后，再执行 npm 发布流程。
-
-## flomo Web 接口维护
-
-flomo Web endpoint 是内部接口，可能变化。当前 adapter 内置读写和同步 endpoint；只有路径或签名规则变化时才需要设置 `FLOMO_READ_ENDPOINT`、`FLOMO_SYNC_ENDPOINT` 或 `FLOMO_WRITE_ENDPOINT`。
-
-维护检查项：
-
-- 读取最近 memo：确认请求 URL、方法、必要 headers、动态参数、返回体 memo 数组字段和稳定标识字段。
-- 新建 memo：确认 payload、签名规则、必要 Cookie、防重放字段和成功响应结构。
-- 全量同步 memo：确认分页路径、分页参数、终止条件、memo 数组字段和稳定标识字段。
-
-## 开发文档
-
-- [开发流程文档](docs/development-flow.md)
-- [开发日志](docs/development-log.md)
+- 不要把 `FLOMO_AUTHORIZATION`、`FLOMO_COOKIE`、原始 memo 内容或 flomo 响应日志提交到 Git。
+- 不要把凭据发给第三方 MCP host、在线调试工具或公开 issue。
+- 项目会对日志 metadata 中常见的 `authorization`、`cookie`、`token` 字段做脱敏，但这不能替代你对凭据和日志的主动保护。
+- 如果 flomo Web 内部接口变化，可以临时覆盖 `FLOMO_READ_ENDPOINT`、`FLOMO_SYNC_ENDPOINT` 或 `FLOMO_WRITE_ENDPOINT`。
 
 ## 许可证
 

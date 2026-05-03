@@ -16,13 +16,6 @@
   },
   "files": [
     "dist",
-    "src",
-    "scripts/extract_flomo_authorization.py",
-    "scripts/extract_flomo_authorization_test.py",
-    "scripts/smoke-stdio.mjs",
-    "docs/assets/development-flow",
-    "docs/development-flow.md",
-    "docs/development-log.md",
     ".env.example",
     "README.md",
     "LICENSE",
