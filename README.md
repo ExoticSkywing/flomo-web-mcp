@@ -123,7 +123,7 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
   "mcpServers": {
     "flomo": {
       "command": "node",
-      "args": ["D:/Vib_Coding_Projects/flomo-mcp/dist/index.js"],
+      "args": ["D:/Projects/flomo-mcp/dist/index.js"],
       "env": {
         "FLOMO_AUTHORIZATION": "Bearer your-token-here",
         "FLOMO_BASE_URL": "https://flomoapp.com",
