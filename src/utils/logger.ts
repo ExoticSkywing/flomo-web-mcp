@@ -38,13 +38,37 @@ function redactMeta(meta: Record<string, unknown> | undefined): Record<string, u
     return undefined;
   }
 
+  return redactRecord(meta);
+}
+
+function redactRecord(meta: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(meta)) {
-    if (/authorization|cookie|token/i.test(key) && typeof value === "string") {
-      result[key] = maskSecret(value);
-    } else {
-      result[key] = value;
-    }
+    result[key] = redactValue(key, value);
   }
   return result;
+}
+
+function redactValue(key: string, value: unknown): unknown {
+  if (isSecretKey(key) && typeof value === "string") {
+    return maskSecret(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValue("", item));
+  }
+
+  if (isRecord(value)) {
+    return redactRecord(value);
+  }
+
+  return value;
+}
+
+function isSecretKey(key: string): boolean {
+  return /authorization|cookie|token/i.test(key);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

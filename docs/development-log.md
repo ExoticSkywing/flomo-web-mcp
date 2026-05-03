@@ -649,3 +649,23 @@ npm audit --audit-level=moderate
 ### 当前完成状态
 
 首版 V1 的代码层和 MCP stdio 验收已完成：`ping`、`list_notes`、`search_notes`、`get_note`、`create_note` 均可用。后续维护重点是 flomo Web 内部接口变化时只更新 adapter/parser/tests。
+
+## 2026-05-03：日志脱敏健壮性补强
+
+### 背景
+
+阶段 7 的安全约束要求日志不输出 Authorization、Cookie 或其它高敏感凭据。原 logger 已能脱敏顶层 `authorization/cookie/token` 字段，但如果后续调试把 headers 或上下文对象作为嵌套 meta 传入，嵌套字段仍有泄露风险。
+
+### 已完成改动
+
+- 补充 `tests/logger.test.ts`，先复现嵌套 `Authorization`、`Cookie` 和 `refreshToken` 不会被脱敏的问题。
+- 将 `createLogger()` 的 meta 清洗改为递归处理对象和数组。
+- 保持原有日志格式不变，仅增强敏感字段脱敏范围。
+
+### 验证证据
+
+```text
+npm test -- tests/logger.test.ts
+```
+
+结果：新增 logger 测试通过。完整验证见本轮最终命令输出。
