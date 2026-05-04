@@ -13,6 +13,7 @@ This project follows short Conventional Commit style summaries in Git history.
 - Contribution and security guidance.
 - GitHub CI and issue/PR templates.
 - npm package metadata and publish allowlist.
+- Concrete GitHub source clone URL and local verification instructions in README.
 
 ### Notes
 

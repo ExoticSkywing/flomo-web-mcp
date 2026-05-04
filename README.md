@@ -60,7 +60,7 @@ flomo-web-mcp
 ### 通过源码运行
 
 ```bash
-git clone <your-repo-url> flomo-web-mcp
+git clone https://github.com/godisabug/flomo-web-mcp.git
 cd flomo-web-mcp
 npm install
 npm run build
@@ -70,6 +70,12 @@ npm run build
 
 ```bash
 node dist/index.js
+```
+
+运行完整本地验证：
+
+```bash
+npm run verify
 ```
 
 ## 配置凭据

@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible problem in flomo-web-mcp.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not include tokens, cookies, memo content, HAR files, or raw flomo responses.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest MCP client or stdio sequence that reproduces the issue.
+      placeholder: |
+        1. Start `flomo-web-mcp`
+        2. Call tool `...`
+        3. See error `...`
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `node --version` and package version.
+      placeholder: node v20.x, flomo-web-mcp 0.1.0
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Redact any credential or memo content.
+    validations:
+      required: true

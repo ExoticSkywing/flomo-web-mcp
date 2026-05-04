@@ -11,6 +11,14 @@
     "typescript",
     "stdio"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/godisabug/flomo-web-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/godisabug/flomo-web-mcp/issues"
+  },
+  "homepage": "https://github.com/godisabug/flomo-web-mcp#readme",
   "bin": {
     "flomo-web-mcp": "./dist/index.js"
   },
