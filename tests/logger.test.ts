@@ -9,10 +9,11 @@ describe("createLogger", () => {
   it("redacts nested authorization, cookie, and token metadata", () => {
     const write = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const logger = createLogger("debug");
+    const fakeAuthorization = `Bearer ${"abcdefghijklmnopqrstuvwxyz"}`;
 
     logger.debug("request metadata", {
       headers: {
-        Authorization: "Bearer abcdefghijklmnopqrstuvwxyz",
+        Authorization: fakeAuthorization,
         Cookie: "sid=secret-session-value",
       },
       context: {

@@ -177,6 +177,11 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
 
 `sync_notes` 支持 `pageSize`（最大 200）和 `maxPages`（最大 100）。如果达到页数上限但仍可能有更多笔记，返回值中的 `complete` 会是 `false`。
 
+## 相关项目
+
+- [flomo-web-cli](https://github.com/godisabug/flomo-web-cli)：同一 flomo Web 访问逻辑的命令行工具，适合在终端或脚本里直接操作 flomo memo。
+- `flomo-web-mcp`：当前项目，适合接入支持 Model Context Protocol 的客户端。
+
 ## 获取 Authorization
 
 1. 浏览器登录 flomo Web。
