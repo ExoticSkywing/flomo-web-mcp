@@ -1,3 +1,11 @@
+export interface MemoImage {
+  index: number;
+  url: string;
+  alt?: string;
+  fileName?: string;
+  mimeType?: string;
+}
+
 export interface Memo {
   slug: string;
   content: string;
@@ -6,4 +14,6 @@ export interface Memo {
   url: string;
   createdAt: string;
   updatedAt: string;
+  images: MemoImage[];
+  imageCount: number;
 }

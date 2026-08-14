@@ -38,6 +38,29 @@ export interface FlomoReadClient {
   searchSynced(query: string, limit?: number): Promise<Memo[]>;
   getSyncedBySlug(slug: string): Promise<Memo | null>;
   getSyncStatus(): SyncNotesStatus;
+  refreshBySlug(slug: string): Promise<Memo | null>;
+}
+
+export interface MemoImageFailure {
+  index: number;
+  code: string;
+  message: string;
+}
+
+export interface DownloadedMemoImage {
+  index: number;
+  data: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface MemoImageLoadResult {
+  images: DownloadedMemoImage[];
+  failures: MemoImageFailure[];
+}
+
+export interface MemoImageLoader {
+  load(memo: Memo): Promise<MemoImageLoadResult>;
 }
 
 export interface FlomoWriteClient {

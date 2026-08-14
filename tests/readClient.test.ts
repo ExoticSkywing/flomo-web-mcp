@@ -12,6 +12,8 @@ const memos: Memo[] = [
     url: "",
     createdAt: "",
     updatedAt: "",
+    images: [],
+    imageCount: 0,
   },
   {
     slug: "2",
@@ -20,6 +22,8 @@ const memos: Memo[] = [
     url: "",
     createdAt: "",
     updatedAt: "",
+    images: [],
+    imageCount: 0,
   },
 ];
 

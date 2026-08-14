@@ -3,7 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { describe, expect, it } from "vitest";
 import type { EnvConfig } from "../src/config/env.js";
-import type { FlomoReadClient } from "../src/types/flomo.js";
+import type { FlomoReadClient, MemoImageLoader } from "../src/types/flomo.js";
 import { createFlomoMcpServer } from "../src/server.js";
 import { registerGetNoteTool } from "../src/tools/getNote.js";
 import { registerSearchNotesTool } from "../src/tools/searchNotes.js";
@@ -68,6 +68,9 @@ describe("createFlomoMcpServer", () => {
       async getBySlug() {
         return null;
       },
+      async refreshBySlug() {
+        return null;
+      },
       async getRecentBatch() {
         return [];
       },
@@ -97,7 +100,7 @@ describe("createFlomoMcpServer", () => {
     } satisfies FlomoReadClient;
 
     registerSearchNotesTool(server, readClient);
-    registerGetNoteTool(server, readClient);
+    registerGetNoteTool(server, readClient, emptyImageLoader());
 
     try {
       await server.connect(serverTransport);
@@ -150,6 +153,9 @@ describe("createFlomoMcpServer", () => {
       async getBySlug() {
         return null;
       },
+      async refreshBySlug() {
+        return null;
+      },
       async getRecentBatch() {
         return [];
       },
@@ -171,6 +177,8 @@ describe("createFlomoMcpServer", () => {
             url: "https://v.flomoapp.com/mine/?memo_id=synced-note",
             createdAt: "",
             updatedAt: "",
+            images: [],
+            imageCount: 0,
           },
         ];
       },
@@ -228,6 +236,118 @@ describe("createFlomoMcpServer", () => {
       await server.close();
     }
   });
+
+  it("returns ordered ImageContent blocks and explicit complete metadata", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = new McpServer({ name: "multimodal-server", version: "0.0.0" });
+    const client = new Client({ name: "multimodal-client", version: "0.0.0" });
+    const memo = makeMemo("with-images", 2);
+    const imageLoader: MemoImageLoader = {
+      async load() {
+        return {
+          images: [
+            { index: 1, data: "aW1hZ2Utb25l", mimeType: "image/png", size: 9 },
+            { index: 2, data: "aW1hZ2UtdHdv", mimeType: "image/jpeg", size: 9 },
+          ],
+          failures: [],
+        };
+      },
+    };
+    registerGetNoteTool(server, makeReadClient(memo), imageLoader);
+
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const result = await client.callTool({ name: "get_note", arguments: { slug: memo.slug } });
+      const content = Array.isArray(result.content) ? result.content : [];
+
+      expect(parseToolJson(result)).toMatchObject({
+        ok: true,
+        status: "complete",
+        memo: { slug: "with-images", imageCount: 2 },
+        images: { declared: 2, loaded: 2, failed: [] },
+      });
+      expect(content.slice(1)).toEqual([
+        { type: "image", data: "aW1hZ2Utb25l", mimeType: "image/png" },
+        { type: "image", data: "aW1hZ2UtdHdv", mimeType: "image/jpeg" },
+      ]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("marks a memo partial and retains successful images when one fails", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = new McpServer({ name: "partial-server", version: "0.0.0" });
+    const client = new Client({ name: "partial-client", version: "0.0.0" });
+    const memo = makeMemo("partial", 2);
+    registerGetNoteTool(server, makeReadClient(memo), {
+      async load() {
+        return {
+          images: [{ index: 1, data: "aW1hZ2U=", mimeType: "image/png", size: 5 }],
+          failures: [{ index: 2, code: "IMAGE_TIMEOUT", message: "图片请求超时。" }],
+        };
+      },
+    });
+
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const result = await client.callTool({ name: "get_note", arguments: { slug: memo.slug } });
+
+      expect(parseToolJson(result)).toMatchObject({
+        status: "partial",
+        images: {
+          declared: 2,
+          loaded: 1,
+          failed: [{ index: 2, code: "IMAGE_TIMEOUT" }],
+        },
+      });
+      expect(Array.isArray(result.content) ? result.content : []).toHaveLength(2);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("refreshes memo attachment URLs once after a 403 and retries image loading", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = new McpServer({ name: "refresh-server", version: "0.0.0" });
+    const client = new Client({ name: "refresh-client", version: "0.0.0" });
+    const staleMemo = makeMemo("refresh", 1);
+    const freshMemo = {
+      ...staleMemo,
+      images: [{ index: 1, url: "https://static.flomoapp.com/fresh.png" }],
+    };
+    const readClient = makeReadClient(staleMemo);
+    let refreshed = 0;
+    readClient.refreshBySlug = async () => {
+      refreshed += 1;
+      return freshMemo;
+    };
+    let loaded = 0;
+    registerGetNoteTool(server, readClient, {
+      async load() {
+        loaded += 1;
+        return loaded === 1
+          ? { images: [], failures: [{ index: 1, code: "IMAGE_AUTH_EXPIRED", message: "图片请求失败，HTTP 403。" }] }
+          : { images: [{ index: 1, data: "ZnJlc2g=", mimeType: "image/png", size: 5 }], failures: [] };
+      },
+    });
+
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const result = await client.callTool({ name: "get_note", arguments: { slug: staleMemo.slug } });
+      expect(parseToolJson(result)).toMatchObject({ status: "complete", images: { loaded: 1, failed: [] } });
+      expect(refreshed).toBe(1);
+      expect(loaded).toBe(2);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 });
 
 function makeConfig(): EnvConfig {
@@ -237,6 +357,40 @@ function makeConfig(): EnvConfig {
     webBaseUrl: "https://v.flomoapp.com",
     timezone: "Asia/Shanghai",
     logLevel: "info",
+  };
+}
+
+function emptyImageLoader(): MemoImageLoader {
+  return { async load() { return { images: [], failures: [] }; } };
+}
+
+function makeMemo(slug: string, imageCount: number) {
+  return {
+    slug,
+    content: "Text and images belong to this memo",
+    tags: [],
+    url: `https://v.flomoapp.com/mine/?memo_id=${slug}`,
+    createdAt: "",
+    updatedAt: "",
+    images: Array.from({ length: imageCount }, (_, offset) => ({
+      index: offset + 1,
+      url: `https://static.flomoapp.com/${offset + 1}.png`,
+    })),
+    imageCount,
+  };
+}
+
+function makeReadClient(memo: ReturnType<typeof makeMemo>): FlomoReadClient {
+  return {
+    async list() { return []; },
+    async search() { return []; },
+    async getBySlug() { return memo; },
+    async refreshBySlug() { return memo; },
+    async getRecentBatch() { return []; },
+    async syncAll() { return { synced: 0, totalCached: 0, pages: 0, complete: true, syncedAt: "" }; },
+    async searchSynced() { return []; },
+    async getSyncedBySlug() { return memo; },
+    getSyncStatus() { return { synced: false, totalCached: 0, complete: false }; },
   };
 }
 

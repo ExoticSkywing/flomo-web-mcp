@@ -3,6 +3,7 @@ import type { EnvConfig } from "./config/env.js";
 import { FlomoHttpClient } from "./clients/http.js";
 import { BearerFlomoReadClient } from "./clients/flomoReadClient.js";
 import { BearerFlomoWriteClient } from "./clients/flomoWriteClient.js";
+import { SecureMemoImageLoader } from "./clients/memoImageLoader.js";
 import { registerCreateNoteTool } from "./tools/createNote.js";
 import { registerGetNoteTool } from "./tools/getNote.js";
 import { jsonToolResponse } from "./tools/common.js";
@@ -19,6 +20,7 @@ export function createFlomoMcpServer(config: EnvConfig): McpServer {
   const httpClient = new FlomoHttpClient(config);
   const readClient = new BearerFlomoReadClient(config, httpClient);
   const writeClient = new BearerFlomoWriteClient(config, httpClient, () => readClient.clearCache());
+  const imageLoader = new SecureMemoImageLoader(config);
 
   server.tool("ping", "Check whether the flomo MCP server is reachable.", {}, async () =>
     jsonToolResponse({
@@ -32,7 +34,7 @@ export function createFlomoMcpServer(config: EnvConfig): McpServer {
   registerListNotesTool(server, readClient);
   registerSyncNotesTool(server, readClient);
   registerSearchNotesTool(server, readClient);
-  registerGetNoteTool(server, readClient);
+  registerGetNoteTool(server, readClient, imageLoader);
 
   return server;
 }

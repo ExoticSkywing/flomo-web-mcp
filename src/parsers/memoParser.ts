@@ -1,4 +1,4 @@
-import type { Memo } from "../models/memo.js";
+import type { Memo, MemoImage } from "../models/memo.js";
 import { FlomoParseError } from "../utils/errors.js";
 import { sha256Short } from "../utils/hash.js";
 import { htmlToText, normalizeWhitespace } from "../utils/text.js";
@@ -20,8 +20,9 @@ export function parseMemo(raw: unknown, baseUrl = "https://flomoapp.com"): Memo 
   const url = pickString(raw, ["url", "link", "share_url"]) ?? buildMemoUrl(baseUrl, slug);
   const createdAt = normalizeDate(raw.created_at ?? raw.createdAt ?? raw.created_time ?? raw.created);
   const updatedAt = normalizeDate(raw.updated_at ?? raw.updatedAt ?? raw.updated_time ?? raw.modified_at ?? raw.modified);
+  const images = extractMemoImages(raw, html);
 
-  if (!content && !html) {
+  if (!content && images.length === 0) {
     throw new FlomoParseError("memo 缺少 content/html/text 字段。");
   }
 
@@ -33,7 +34,105 @@ export function parseMemo(raw: unknown, baseUrl = "https://flomoapp.com"): Memo 
     url,
     createdAt,
     updatedAt: updatedAt || createdAt,
+    images,
+    imageCount: images.length,
   };
+}
+
+const ATTACHMENT_KEYS = ["images", "files", "attachments", "resources", "media"];
+const IMAGE_URL_KEYS = ["url", "download_url", "downloadUrl", "src", "source", "thumbnail", "thumbnail_url", "thumbnailUrl"];
+const FULL_IMAGE_URL_KEYS = ["url", "download_url", "downloadUrl", "src", "source"];
+
+function extractMemoImages(raw: Record<string, unknown>, html: string | undefined): MemoImage[] {
+  const candidates: Array<Omit<MemoImage, "index">> = [];
+  if (html) {
+    for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
+      const url = extractHtmlAttribute(tag, "src") ?? extractHtmlAttribute(tag, "data-src");
+      if (!url) {
+        continue;
+      }
+      candidates.push({
+        url: decodeHtmlAttribute(url),
+        ...optionalField("alt", extractHtmlAttribute(tag, "alt")),
+      });
+    }
+  }
+
+  for (const key of ATTACHMENT_KEYS) {
+    collectAttachmentImages(raw[key], candidates);
+  }
+
+  const seen = new Set<string>();
+  return candidates.flatMap((candidate) => {
+    const url = normalizeImageUrl(candidate.url);
+    if (!url || seen.has(url)) {
+      return [];
+    }
+    seen.add(url);
+    return [{ ...candidate, url, index: seen.size }];
+  });
+}
+
+function collectAttachmentImages(value: unknown, target: Array<Omit<MemoImage, "index">>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectAttachmentImages(item, target);
+    }
+    return;
+  }
+  if (typeof value === "string") {
+    if (looksLikeImageUrl(value)) {
+      target.push({ url: value });
+    }
+    return;
+  }
+  if (!isRecord(value)) {
+    return;
+  }
+
+  const url = pickString(value, FULL_IMAGE_URL_KEYS) ?? pickString(value, IMAGE_URL_KEYS);
+  const mimeType = pickString(value, ["mime_type", "mimeType", "content_type", "contentType", "type"]);
+  const fileName = pickString(value, ["name", "file_name", "fileName", "filename"]);
+  if (url && (looksLikeImageUrl(url) || mimeType?.toLowerCase().startsWith("image/"))) {
+    target.push({
+      url,
+      ...optionalField("fileName", fileName),
+      ...optionalField("mimeType", mimeType?.toLowerCase()),
+    });
+  }
+}
+
+function extractHtmlAttribute(tag: string, name: string): string | undefined {
+  const match = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+  return match?.[1] ?? match?.[2] ?? match?.[3];
+}
+
+function decodeHtmlAttribute(value: string): string {
+  return value.replace(/&amp;/gi, "&").replace(/&#38;/g, "&");
+}
+
+function normalizeImageUrl(value: string): string | undefined {
+  const trimmed = value.trim();
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function looksLikeImageUrl(value: string): boolean {
+  try {
+    const pathname = new URL(value).pathname;
+    return /\.(?:avif|gif|jpe?g|png|webp)$/i.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+function optionalField<Key extends string>(key: Key, value: string | undefined): Partial<Record<Key, string>> {
+  const normalized = value?.trim();
+  return normalized ? ({ [key]: normalized } as Record<Key, string>) : {};
 }
 
 function buildMemoUrl(baseUrl: string, slug: string): string {

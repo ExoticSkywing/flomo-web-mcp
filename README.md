@@ -18,8 +18,10 @@
 
 - 作为本地 stdio MCP server 运行，可接入支持 MCP 的客户端。
 - 使用你的 flomo Web 会话凭据访问 memo，不需要 flomo Pro。
-- 支持查看最近 memo、按 `slug` 获取单条 memo、创建新 memo。
+- 支持查看最近 memo、按 `slug` 获取正文与全部有序图片、创建新 memo。
 - 支持分页同步 memo 到本地内存缓存，并在显式指定范围时执行全库搜索或定位。
+- 列表、搜索和同步只保留图片元数据；只有 `get_note` 按需下载图片并返回标准 MCP `ImageContent`。
+- 图片下载具备 HTTPS/域名/DNS/重定向校验、类型校验和大小/数量限制；任一图片失败会将结果标记为 `partial`。
 
 ## 运行流程
 
@@ -113,7 +115,11 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
         "FLOMO_BASE_URL": "https://flomoapp.com",
         "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
         "FLOMO_TIMEZONE": "Asia/Shanghai",
-        "FLOMO_REQUEST_TIMEOUT_MS": "30000"
+        "FLOMO_REQUEST_TIMEOUT_MS": "30000",
+        "FLOMO_IMAGE_REQUEST_TIMEOUT_MS": "15000",
+        "FLOMO_IMAGE_MAX_BYTES": "10485760",
+        "FLOMO_MEMO_IMAGE_MAX_BYTES": "31457280",
+        "FLOMO_MEMO_IMAGE_MAX_COUNT": "20"
       }
     }
   }
@@ -135,7 +141,11 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
         "FLOMO_BASE_URL": "https://flomoapp.com",
         "FLOMO_WEB_BASE_URL": "https://v.flomoapp.com",
         "FLOMO_TIMEZONE": "Asia/Shanghai",
-        "FLOMO_REQUEST_TIMEOUT_MS": "30000"
+        "FLOMO_REQUEST_TIMEOUT_MS": "30000",
+        "FLOMO_IMAGE_REQUEST_TIMEOUT_MS": "15000",
+        "FLOMO_IMAGE_MAX_BYTES": "10485760",
+        "FLOMO_MEMO_IMAGE_MAX_BYTES": "31457280",
+        "FLOMO_MEMO_IMAGE_MAX_COUNT": "20"
       }
     }
   }
@@ -153,6 +163,10 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
 | `FLOMO_WEB_BASE_URL` | 可选 | `https://v.flomoapp.com` | flomo Web 基础地址。 |
 | `FLOMO_TIMEZONE` | 可选 | `Asia/Shanghai` | IANA timezone。 |
 | `FLOMO_REQUEST_TIMEOUT_MS` | 可选 | `30000` | flomo Web 请求超时时间，单位毫秒。 |
+| `FLOMO_IMAGE_REQUEST_TIMEOUT_MS` | 可选 | `15000` | 单次图片请求超时，单位毫秒。 |
+| `FLOMO_IMAGE_MAX_BYTES` | 可选 | `10485760` | 单张图片最大字节数。 |
+| `FLOMO_MEMO_IMAGE_MAX_BYTES` | 可选 | `31457280` | 单条 memo 全部图片最大总字节数。 |
+| `FLOMO_MEMO_IMAGE_MAX_COUNT` | 可选 | `20` | 单条 memo 最多下载的图片数。 |
 | `LOG_LEVEL` | 可选 | `info` | `debug`、`info`、`warn` 或 `error`。 |
 | `FLOMO_READ_ENDPOINT` | 可选 | 内置当前路径 | 仅在 flomo Web 内部读取路径变化时覆盖。 |
 | `FLOMO_SYNC_ENDPOINT` | 可选 | 内置当前路径 | 仅在 flomo Web 内部同步路径变化时覆盖。 |
@@ -168,7 +182,7 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
 | `list_notes` | 列出最近 memo。 |
 | `sync_notes` | 分页同步 memo 到本地内存缓存，只返回同步统计。 |
 | `search_notes` | 默认搜索最近 memo；传入 `scope: "all_synced_notes"` 时搜索已同步缓存。 |
-| `get_note` | 默认按 `slug` 从最近 memo 定位；传入 `scope: "all_synced_notes"` 时从已同步缓存定位。 |
+| `get_note` | 默认按 `slug` 从最近 memo 定位并按原始顺序返回全部图片 `ImageContent`；传入 `scope: "all_synced_notes"` 时从已同步缓存定位。 |
 | `create_note` | 新建 memo。 |
 
 ## 全量同步边界
@@ -182,6 +196,15 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
 ```
 
 `sync_notes` 支持 `pageSize`（最大 200）和 `maxPages`（最大 100）。如果达到页数上限但仍可能有更多笔记，返回值中的 `complete` 会是 `false`。
+
+## 多模态读取边界
+
+- Memo 模型包含有序 `images` 元数据和 `imageCount`；纯图片 memo 也是有效 memo。
+- `list_notes`、`search_notes`、`sync_notes` 不下载图片二进制，也不做 OCR 或视觉索引。
+- `get_note` 的第一个内容块是正文、memo 元数据及 `complete` / `partial` 状态，后续内容块是按顺序排列的 MCP 图片内容。
+- 遇到图片 401/403 时，server 会刷新该 memo 的附件引用并重试一次；仍失败则返回对应图片序号及脱敏原因。
+- 图片只在当前调用中读入内存并交给 MCP 客户端，不建立永久图片镜像；短期复用由 Hermes 等客户端的运行时图片缓存负责。
+- 当前解析覆盖 HTML `<img>` 以及常见 `images`、`files`、`attachments`、`resources`、`media` 数组形态。真实 flomo 字段可能随内部接口变化，需用授权账号单独验证。
 
 ## 相关项目
 

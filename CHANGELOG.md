@@ -14,6 +14,8 @@ This project follows short Conventional Commit style summaries in Git history.
 - GitHub CI and issue/PR templates.
 - npm package metadata and publish allowlist.
 - Concrete GitHub source clone URL and local verification instructions in README.
+- Ordered memo image metadata, image-only memo parsing, and on-demand MCP `ImageContent` delivery.
+- Secure image fetching with SSRF controls, magic-byte validation, configurable limits, and explicit partial results.
 
 ### Notes
 

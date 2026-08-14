@@ -19,6 +19,10 @@ export interface EnvConfig {
   deviceModel?: string;
   webPlatform?: string;
   requestTimeoutMs?: number;
+  imageRequestTimeoutMs?: number;
+  imageMaxBytes?: number;
+  memoImageMaxBytes?: number;
+  memoImageMaxCount?: number;
 }
 
 const LogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
@@ -38,6 +42,10 @@ const EnvSchema = z.object({
   FLOMO_DEVICE_MODEL: z.string().optional(),
   FLOMO_WEB_PLATFORM: z.string().optional(),
   FLOMO_REQUEST_TIMEOUT_MS: z.string().optional(),
+  FLOMO_IMAGE_REQUEST_TIMEOUT_MS: z.string().optional(),
+  FLOMO_IMAGE_MAX_BYTES: z.string().optional(),
+  FLOMO_MEMO_IMAGE_MAX_BYTES: z.string().optional(),
+  FLOMO_MEMO_IMAGE_MAX_COUNT: z.string().optional(),
 });
 
 const defaultDeviceId = randomUUID();
@@ -63,6 +71,18 @@ export function loadEnv(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     deviceModel: emptyToUndefined(parsed.FLOMO_DEVICE_MODEL) ?? "Other",
     webPlatform: emptyToUndefined(parsed.FLOMO_WEB_PLATFORM) ?? "Web",
     requestTimeoutMs: parsePositiveInteger(parsed.FLOMO_REQUEST_TIMEOUT_MS, 30_000, "FLOMO_REQUEST_TIMEOUT_MS"),
+    imageRequestTimeoutMs: parsePositiveInteger(
+      parsed.FLOMO_IMAGE_REQUEST_TIMEOUT_MS,
+      15_000,
+      "FLOMO_IMAGE_REQUEST_TIMEOUT_MS",
+    ),
+    imageMaxBytes: parsePositiveInteger(parsed.FLOMO_IMAGE_MAX_BYTES, 10 * 1024 * 1024, "FLOMO_IMAGE_MAX_BYTES"),
+    memoImageMaxBytes: parsePositiveInteger(
+      parsed.FLOMO_MEMO_IMAGE_MAX_BYTES,
+      30 * 1024 * 1024,
+      "FLOMO_MEMO_IMAGE_MAX_BYTES",
+    ),
+    memoImageMaxCount: parsePositiveInteger(parsed.FLOMO_MEMO_IMAGE_MAX_COUNT, 20, "FLOMO_MEMO_IMAGE_MAX_COUNT"),
   };
 }
 
@@ -91,7 +111,7 @@ function parsePositiveInteger(value: string | undefined, fallback: number, name:
 
   const parsed = Number(trimmed);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} 必须是正整数毫秒数。`);
+    throw new Error(`${name} 必须是正整数。`);
   }
 
   return parsed;

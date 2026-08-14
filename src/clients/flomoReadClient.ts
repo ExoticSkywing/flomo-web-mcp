@@ -51,6 +51,12 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     return items.find((item) => item.slug === slug) ?? null;
   }
 
+  async refreshBySlug(slug: string): Promise<Memo | null> {
+    this.cache = undefined;
+    const items = await this.getRecentBatch();
+    return items.find((item) => item.slug === slug) ?? null;
+  }
+
   async getRecentBatch(_cursor?: string): Promise<Memo[]> {
     if (this.cache && this.cache.expiresAt > Date.now()) {
       return this.cache.items;
