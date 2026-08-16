@@ -3,6 +3,7 @@ import type { Memo } from "../models/memo.js";
 import { parseMemo } from "../parsers/memoParser.js";
 import type {
   FlomoReadClient,
+  FreshnessResult,
   MemoPageCursor,
   SyncNotesOptions,
   SyncNotesResult,
@@ -19,17 +20,43 @@ const DEFAULT_SYNC_PAGE_SIZE = 200;
 const MAX_SYNC_PAGE_SIZE = 200;
 const DEFAULT_SYNC_MAX_PAGES = 50;
 const MAX_SYNC_MAX_PAGES = 100;
+const INCREMENTAL_OVERLAP_SECONDS = 2;
 const DEFAULT_READ_ENDPOINT = "/api/v1/memo/latest_updated_desc";
 const DEFAULT_SYNC_ENDPOINT = "/api/v1/memo/updated/";
 
+interface SyncedCache {
+  complete: boolean;
+  items: Map<string, Memo>;
+  syncedAt: string;
+  watermark?: MemoPageCursor;
+  nextCursor?: MemoPageCursor;
+}
+
+interface SyncPage {
+  rawItems: unknown[];
+  rawCount: number;
+  nextCursor?: MemoPageCursor;
+}
+
+interface FullSyncCollection {
+  items: Map<string, Memo>;
+  pages: number;
+  complete: boolean;
+  watermark?: MemoPageCursor;
+  nextCursor?: MemoPageCursor;
+}
+
+interface IncrementalCollection {
+  changes: Map<string, unknown>;
+  pages: number;
+  complete: boolean;
+  watermark?: MemoPageCursor;
+}
+
 export class BearerFlomoReadClient implements FlomoReadClient {
   private cache?: { expiresAt: number; items: Memo[] };
-  private syncedCache?: {
-    complete: boolean;
-    items: Memo[];
-    syncedAt: string;
-    nextCursor?: MemoPageCursor;
-  };
+  private syncedCache?: SyncedCache;
+  private freshnessInFlight?: Promise<FreshnessResult>;
 
   constructor(
     private readonly config: EnvConfig,
@@ -41,9 +68,9 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     return items.slice(0, normalizeLimit(limit));
   }
 
-  async search(query: string, limit = DEFAULT_LIMIT): Promise<Memo[]> {
+  async search(query = "", limit = DEFAULT_LIMIT, tag?: string): Promise<Memo[]> {
     const items = await this.getRecentBatch();
-    return filterMemos(items, query, normalizeLimit(limit));
+    return filterMemos(items, query, normalizeLimit(limit), tag);
   }
 
   async getBySlug(slug: string): Promise<Memo | null> {
@@ -54,7 +81,12 @@ export class BearerFlomoReadClient implements FlomoReadClient {
   async refreshBySlug(slug: string): Promise<Memo | null> {
     this.cache = undefined;
     const items = await this.getRecentBatch();
-    return items.find((item) => item.slug === slug) ?? null;
+    const memo = items.find((item) => item.slug === slug) ?? null;
+    if (memo && this.syncedCache?.complete) {
+      this.syncedCache.items.set(memo.slug, memo);
+      this.syncedCache.watermark = newestCursor(this.syncedCache.watermark, cursorFromMemo(memo));
+    }
+    return memo;
   }
 
   async getRecentBatch(_cursor?: string): Promise<Memo[]> {
@@ -76,55 +108,53 @@ export class BearerFlomoReadClient implements FlomoReadClient {
   async syncAll(options: SyncNotesOptions = {}): Promise<SyncNotesResult> {
     const pageSize = normalizeBoundedInteger(options.pageSize, DEFAULT_SYNC_PAGE_SIZE, MAX_SYNC_PAGE_SIZE);
     const maxPages = normalizeBoundedInteger(options.maxPages, DEFAULT_SYNC_MAX_PAGES, MAX_SYNC_MAX_PAGES);
-    const bySlug = new Map<string, Memo>();
-    let cursor: MemoPageCursor | undefined = { latestUpdatedAt: 0, latestSlug: "" };
-    let nextCursor: MemoPageCursor | undefined;
-    let complete = false;
-    let pages = 0;
-
-    while (pages < maxPages) {
-      const page = await this.getSyncPage(cursor, pageSize);
-      pages += 1;
-
-      for (const item of page.items) {
-        bySlug.set(item.slug, item);
-      }
-
-      nextCursor = page.nextCursor;
-      if (page.rawCount === 0 || page.rawCount < pageSize || !nextCursor) {
-        complete = true;
-        nextCursor = undefined;
-        break;
-      }
-
-      cursor = nextCursor;
-    }
-
+    const collected = await this.collectFullSync(pageSize, maxPages);
     const syncedAt = new Date().toISOString();
-    const items = [...bySlug.values()];
+
     this.syncedCache = {
-      complete,
-      items,
+      complete: collected.complete,
+      items: collected.items,
       syncedAt,
-      nextCursor,
+      watermark: collected.complete ? collected.watermark : undefined,
+      nextCursor: collected.nextCursor,
     };
 
     return {
-      synced: items.length,
-      totalCached: items.length,
-      pages,
-      complete,
+      synced: collected.items.size,
+      totalCached: collected.items.size,
+      pages: collected.pages,
+      complete: collected.complete,
       syncedAt,
-      ...(nextCursor ? { nextCursor } : {}),
+      ...(collected.nextCursor ? { nextCursor: collected.nextCursor } : {}),
     };
   }
 
-  async searchSynced(query: string, limit = DEFAULT_LIMIT): Promise<Memo[]> {
-    return filterMemos(this.requireSyncedItems(), query, normalizeLimit(limit));
+  async ensureFresh(options: SyncNotesOptions = {}): Promise<FreshnessResult> {
+    if (this.freshnessInFlight) {
+      return this.freshnessInFlight;
+    }
+
+    const operation = this.runEnsureFresh(options);
+    this.freshnessInFlight = operation;
+    try {
+      return await operation;
+    } finally {
+      if (this.freshnessInFlight === operation) {
+        this.freshnessInFlight = undefined;
+      }
+    }
+  }
+
+  async listSynced(limit = DEFAULT_LIMIT): Promise<Memo[]> {
+    return sortMemosByUpdatedAt(this.requireSyncedItems()).slice(0, normalizeLimit(limit));
+  }
+
+  async searchSynced(query = "", limit = DEFAULT_LIMIT, tag?: string): Promise<Memo[]> {
+    return filterMemos(this.requireSyncedItems(), query, normalizeLimit(limit), tag);
   }
 
   async getSyncedBySlug(slug: string): Promise<Memo | null> {
-    return this.requireSyncedItems().find((item) => item.slug === slug) ?? null;
+    return this.requireSyncedMap().get(slug) ?? null;
   }
 
   getSyncStatus(): SyncNotesStatus {
@@ -138,16 +168,191 @@ export class BearerFlomoReadClient implements FlomoReadClient {
 
     return {
       synced: true,
-      totalCached: this.syncedCache.items.length,
+      totalCached: this.syncedCache.items.size,
       complete: this.syncedCache.complete,
       syncedAt: this.syncedCache.syncedAt,
       ...(this.syncedCache.nextCursor ? { nextCursor: this.syncedCache.nextCursor } : {}),
     };
   }
 
+  recordCreated(memo: Memo): void {
+    this.cache = undefined;
+    if (!this.syncedCache?.complete) {
+      return;
+    }
+    this.syncedCache.items.set(memo.slug, memo);
+    this.syncedCache.watermark = newestCursor(this.syncedCache.watermark, cursorFromMemo(memo));
+  }
+
   clearCache(): void {
     this.cache = undefined;
     this.syncedCache = undefined;
+  }
+
+  private async runEnsureFresh(options: SyncNotesOptions): Promise<FreshnessResult> {
+    const pageSize = normalizeBoundedInteger(options.pageSize, DEFAULT_SYNC_PAGE_SIZE, MAX_SYNC_PAGE_SIZE);
+    const maxPages = normalizeBoundedInteger(options.maxPages, DEFAULT_SYNC_MAX_PAGES, MAX_SYNC_MAX_PAGES);
+
+    if (!this.syncedCache?.complete) {
+      const result = await this.syncAll({ pageSize, maxPages });
+      if (!result.complete) {
+        this.syncedCache = undefined;
+        throw new FlomoRequestError(
+          "REMOTE_CHANGED",
+          "flomo 全量同步未到达末尾，拒绝使用不完整缓存回答。请提高 maxPages 后重试。",
+        );
+      }
+      return {
+        initialized: true,
+        mode: "full",
+        changed: result.totalCached,
+        added: result.totalCached,
+        updated: 0,
+        deleted: 0,
+        totalCached: result.totalCached,
+        pages: result.pages,
+        complete: true,
+        syncedAt: result.syncedAt,
+      };
+    }
+
+    const current = this.syncedCache;
+    const collected = await this.collectIncremental(current.watermark, pageSize, maxPages);
+    if (!collected.complete) {
+      throw new FlomoRequestError(
+        "REMOTE_CHANGED",
+        "flomo 增量同步未覆盖到上次同步边界，拒绝返回可能过期的结果。请提高 maxPages 后重试。",
+      );
+    }
+
+    const nextItems = new Map(current.items);
+    let added = 0;
+    let updated = 0;
+    let deleted = 0;
+    for (const raw of collected.changes.values()) {
+      const slug = extractMemoSlug(raw);
+      if (!slug) {
+        continue;
+      }
+      if (isDeletedMemo(raw)) {
+        if (nextItems.delete(slug)) {
+          deleted += 1;
+        }
+        continue;
+      }
+
+      const memo = parseMemo(raw, this.config.webBaseUrl ?? this.config.baseUrl);
+      const previous = nextItems.get(slug);
+      if (!previous) {
+        nextItems.set(slug, memo);
+        added += 1;
+      } else if (!sameMemo(previous, memo)) {
+        nextItems.set(slug, memo);
+        updated += 1;
+      }
+    }
+
+    const syncedAt = new Date().toISOString();
+    this.syncedCache = {
+      complete: true,
+      items: nextItems,
+      syncedAt,
+      watermark: newestCursor(current.watermark, collected.watermark),
+    };
+    this.cache = undefined;
+
+    return {
+      initialized: false,
+      mode: "incremental",
+      changed: added + updated + deleted,
+      added,
+      updated,
+      deleted,
+      totalCached: nextItems.size,
+      pages: collected.pages,
+      complete: true,
+      syncedAt,
+    };
+  }
+
+  private async collectFullSync(pageSize: number, maxPages: number): Promise<FullSyncCollection> {
+    const items = new Map<string, Memo>();
+    let cursor: MemoPageCursor | undefined = { latestUpdatedAt: 0, latestSlug: "" };
+    let nextCursor: MemoPageCursor | undefined;
+    let watermark: MemoPageCursor | undefined;
+    let complete = false;
+    let pages = 0;
+
+    while (pages < maxPages) {
+      const page = await this.getSyncPage(cursor, pageSize);
+      pages += 1;
+      watermark = newestCursor(watermark, newestRawCursor(page.rawItems));
+
+      for (const raw of page.rawItems) {
+        const slug = extractMemoSlug(raw);
+        if (!slug || items.has(slug) || isDeletedMemo(raw)) {
+          continue;
+        }
+        items.set(slug, parseMemo(raw, this.config.webBaseUrl ?? this.config.baseUrl));
+      }
+
+      nextCursor = page.nextCursor;
+      if (page.rawCount === 0 || page.rawCount < pageSize || !nextCursor) {
+        complete = true;
+        nextCursor = undefined;
+        break;
+      }
+      cursor = nextCursor;
+    }
+
+    return { items, pages, complete, watermark, nextCursor };
+  }
+
+  private async collectIncremental(
+    watermark: MemoPageCursor | undefined,
+    pageSize: number,
+    maxPages: number,
+  ): Promise<IncrementalCollection> {
+    if (!watermark) {
+      return { changes: new Map(), pages: 0, complete: false };
+    }
+
+    const changes = new Map<string, unknown>();
+    const overlapStart: MemoPageCursor = {
+      latestUpdatedAt: Math.max(0, watermark.latestUpdatedAt - INCREMENTAL_OVERLAP_SECONDS),
+      latestSlug: "",
+    };
+    let cursor: MemoPageCursor | undefined = { latestUpdatedAt: 0, latestSlug: "" };
+    let newest: MemoPageCursor | undefined;
+    let complete = false;
+    let pages = 0;
+
+    while (pages < maxPages) {
+      const page = await this.getSyncPage(cursor, pageSize);
+      pages += 1;
+      newest = newestCursor(newest, newestRawCursor(page.rawItems));
+      let crossedBoundary = false;
+
+      for (const raw of page.rawItems) {
+        const rawCursor = cursorFromRaw(raw);
+        if (rawCursor && rawCursor.latestUpdatedAt < overlapStart.latestUpdatedAt) {
+          crossedBoundary = true;
+          break;
+        }
+        const slug = extractMemoSlug(raw);
+        if (slug && !changes.has(slug)) {
+          changes.set(slug, raw);
+        }
+      }
+
+      if (crossedBoundary || page.rawCount === 0 || page.rawCount < pageSize || !page.nextCursor) {
+        complete = true;
+        break;
+      }
+      cursor = page.nextCursor;
+    }
+
+    return { changes, pages, complete, watermark: newest };
   }
 
   private buildReadEndpoint(endpoint: string): string {
@@ -161,19 +366,12 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     return appendQueryString(endpoint, params);
   }
 
-  private async getSyncPage(cursor: MemoPageCursor | undefined, pageSize: number): Promise<{
-    items: Memo[];
-    rawCount: number;
-    nextCursor?: MemoPageCursor;
-  }> {
+  private async getSyncPage(cursor: MemoPageCursor | undefined, pageSize: number): Promise<SyncPage> {
     const endpoint = this.buildSyncEndpoint(this.config.syncEndpoint ?? DEFAULT_SYNC_ENDPOINT, cursor, pageSize);
     const raw = await this.httpClient.requestJson<unknown>(endpoint);
     const rawItems = extractMemoArray(raw);
-
     return {
-      items: rawItems
-        .filter((item) => !isDeletedMemo(item))
-        .map((item) => parseMemo(item, this.config.webBaseUrl ?? this.config.baseUrl)),
+      rawItems,
       rawCount: rawItems.length,
       nextCursor: extractNextCursor(rawItems),
     };
@@ -193,27 +391,54 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     return appendQueryString(endpoint, params);
   }
 
-  private requireSyncedItems(): Memo[] {
+  private requireSyncedMap(): Map<string, Memo> {
     if (!this.syncedCache) {
-      throw new FlomoRequestError("BAD_REQUEST", "尚未同步全量 flomo 笔记，请先调用 sync_notes。");
+      throw new FlomoRequestError("BAD_REQUEST", "尚未建立 flomo 内存快照，请先刷新。");
     }
-
     return this.syncedCache.items;
+  }
+
+  private requireSyncedItems(): Memo[] {
+    return [...this.requireSyncedMap().values()];
   }
 }
 
-export function filterMemos(items: Memo[], query: string, limit = DEFAULT_LIMIT): Memo[] {
+export function filterMemos(items: Memo[], query = "", limit = DEFAULT_LIMIT, tag?: string): Memo[] {
   const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
+  const normalizedTag = normalizeTagKey(tag);
+  if (!normalizedQuery && !normalizedTag) {
     return [];
   }
 
-  return items
+  return sortMemosByUpdatedAt(items)
     .filter((item) => {
+      if (normalizedTag && !item.tags.some((itemTag) => normalizeTagKey(itemTag) === normalizedTag)) {
+        return false;
+      }
+      if (!normalizedQuery) {
+        return true;
+      }
       const haystack = `${item.content}\n${item.tags.join(" ")}`.toLowerCase();
       return haystack.includes(normalizedQuery);
     })
     .slice(0, normalizeLimit(limit));
+}
+
+function normalizeTagKey(value: string | undefined): string | undefined {
+  const normalized = value?.trim().replace(/^#+/, "").toLowerCase();
+  return normalized || undefined;
+}
+
+function sortMemosByUpdatedAt(items: Memo[]): Memo[] {
+  return [...items].sort((left, right) => {
+    const timeDifference = dateMilliseconds(right.updatedAt) - dateMilliseconds(left.updatedAt);
+    return timeDifference || right.slug.localeCompare(left.slug);
+  });
+}
+
+function dateMilliseconds(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function extractMemoArray(raw: unknown): unknown[] {
@@ -272,22 +497,49 @@ function isDeletedMemo(raw: unknown): boolean {
   return deletedAt !== null && deletedAt !== undefined && String(deletedAt).trim() !== "";
 }
 
+function extractMemoSlug(raw: unknown): string | undefined {
+  return isRecord(raw) ? pickString(raw, ["slug", "memo_slug", "memo_id", "id"]) : undefined;
+}
+
 function extractNextCursor(rawItems: unknown[]): MemoPageCursor | undefined {
-  const raw = rawItems.at(-1);
+  return cursorFromRaw(rawItems.at(-1));
+}
+
+function newestRawCursor(rawItems: unknown[]): MemoPageCursor | undefined {
+  return rawItems.reduce<MemoPageCursor | undefined>((newest, raw) => newestCursor(newest, cursorFromRaw(raw)), undefined);
+}
+
+function cursorFromRaw(raw: unknown): MemoPageCursor | undefined {
   if (!isRecord(raw)) {
     return undefined;
   }
-
   const latestSlug = pickString(raw, ["slug", "memo_slug", "memo_id", "id"]);
   const latestUpdatedAt = pickUnixSeconds(raw.updated_at ?? raw.updatedAt ?? raw.updated_time ?? raw.modified_at ?? raw.modified);
   if (!latestSlug || latestUpdatedAt === undefined) {
     return undefined;
   }
+  return { latestUpdatedAt, latestSlug };
+}
 
-  return {
-    latestUpdatedAt,
-    latestSlug,
-  };
+function cursorFromMemo(memo: Memo): MemoPageCursor | undefined {
+  const latestUpdatedAt = pickUnixSeconds(memo.updatedAt);
+  return latestUpdatedAt === undefined ? undefined : { latestUpdatedAt, latestSlug: memo.slug };
+}
+
+function newestCursor(
+  left: MemoPageCursor | undefined,
+  right: MemoPageCursor | undefined,
+): MemoPageCursor | undefined {
+  if (!left) return right;
+  if (!right) return left;
+  if (right.latestUpdatedAt !== left.latestUpdatedAt) {
+    return right.latestUpdatedAt > left.latestUpdatedAt ? right : left;
+  }
+  return right.latestSlug.localeCompare(left.latestSlug) > 0 ? right : left;
+}
+
+function sameMemo(left: Memo, right: Memo): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function pickString(record: Record<string, unknown>, keys: string[]): string | undefined {

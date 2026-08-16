@@ -2,31 +2,27 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { FlomoReadClient, MemoImageLoader } from "../types/flomo.js";
 import { toPublicError } from "../utils/errors.js";
-import { allSyncedNotesScope, jsonToolResponse, recentNotesScope } from "./common.js";
+import { allSyncedNotesScope, jsonToolResponse } from "./common.js";
 
 export function registerGetNoteTool(server: McpServer, readClient: FlomoReadClient, imageLoader: MemoImageLoader): void {
   server.tool(
     "get_note",
-    "Get a single flomo note by slug from recent notes, or from the local all-notes sync cache when requested.",
+    "Refresh the complete in-memory flomo snapshot, then get one memo by slug with all ordered ImageContent attachments.",
     {
       slug: z.string().min(1),
       scope: z.enum(["recent_notes", "all_synced_notes"]).optional(),
     },
-    async ({ slug, scope }) => {
+    async ({ slug }) => {
       try {
-        let memo;
-        let resolvedScope;
-        if (scope === "all_synced_notes") {
-          const status = readClient.getSyncStatus();
-          memo = await readClient.getSyncedBySlug(slug);
-          resolvedScope = allSyncedNotesScope(status.complete, status.syncedAt);
-        } else {
-          memo = await readClient.getBySlug(slug);
-          resolvedScope = recentNotesScope();
+        if (!readClient.ensureFresh) {
+          throw new Error("read client 不支持自动新鲜同步。");
         }
+        const freshness = await readClient.ensureFresh();
+        let memo = await readClient.getSyncedBySlug(slug);
+        const resolvedScope = allSyncedNotesScope(true, freshness.syncedAt);
 
         if (!memo) {
-          return jsonToolResponse({ ok: true, status: "complete", memo: null, scope: resolvedScope });
+          return jsonToolResponse({ ok: true, status: "complete", memo: null, freshness, scope: resolvedScope });
         }
 
         let loaded = await imageLoader.load(memo);
@@ -47,6 +43,7 @@ export function registerGetNoteTool(server: McpServer, readClient: FlomoReadClie
             loaded: loaded.images.length,
             failed: loaded.failures,
           },
+          freshness,
           scope: resolvedScope,
         };
         return {

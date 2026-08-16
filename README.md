@@ -18,9 +18,11 @@
 
 - 作为本地 stdio MCP server 运行，可接入支持 MCP 的客户端。
 - 使用你的 flomo Web 会话凭据访问 memo，不需要 flomo Pro。
-- 支持查看最近 memo、按 `slug` 获取正文与全部有序图片、创建新 memo。
-- 支持分页同步 memo 到本地内存缓存，并在显式指定范围时执行全库搜索或定位。
+- 支持查看最新的完整内存快照、按 `slug` 获取正文与全部有序图片、创建新 memo。
+- 首次访问自动分页建立完整内存快照；后续每次访问先以重叠游标做轻量增量刷新，合并新增和修改并移除远端删除项。
+- 支持一次精确标签查询（自动统一 `#` 和大小写）与全文关键词查询；无需手动预调用 `sync_notes`，也无需重复搜索大小写/`#` 变体。
 - 列表、搜索和同步只保留图片元数据；只有 `get_note` 按需下载图片并返回标准 MCP `ImageContent`。
+- 新鲜同步失败或无法确认完整性时拒绝返回旧缓存作为最新完整结果。
 - 图片下载具备 HTTPS/域名/DNS/重定向校验、类型校验和大小/数量限制；任一图片失败会将结果标记为 `partial`。
 
 ## 运行流程
@@ -30,12 +32,12 @@ flowchart LR
   Host["MCP 客户端"] -->|启动 stdio server| Server["flomo-web-mcp"]
   Server -->|读取 env| Config["本地配置<br/>FLOMO_AUTHORIZATION 等"]
   Server -->|注册工具| Tools["MCP 工具<br/>list / sync / search / get / create"]
-  Host -->|调用工具| Tools
-  Tools -->|请求 flomo Web| Flomo["flomo Web 内部接口"]
-  Flomo -->|返回 memo 数据| Parser["解析与错误映射"]
-  Parser -->|返回 MCP 响应| Host
-  Tools -->|sync_notes| Cache["本地内存缓存"]
-  Cache -->|search_notes / get_note<br/>scope: all_synced_notes| Tools
+  Host -->|调用 list/search/get| Tools
+  Tools -->|首次全量、后续增量刷新| Flomo["flomo Web 内部接口"]
+  Flomo -->|返回新增/修改/删除 memo| Parser["解析与错误映射"]
+  Parser -->|事务式替换快照| Cache["完整内存快照"]
+  Cache -->|最新查询结果| Tools
+  Tools -->|返回 MCP 响应| Host
 ```
 
 ## 要求
@@ -179,23 +181,20 @@ FLOMO_AUTHORIZATION=Bearer your-token-here
 | 工具 | 说明 |
 | --- | --- |
 | `ping` | 检查 server 是否可用。 |
-| `list_notes` | 列出最近 memo。 |
-| `sync_notes` | 分页同步 memo 到本地内存缓存，只返回同步统计。 |
-| `search_notes` | 默认搜索最近 memo；传入 `scope: "all_synced_notes"` 时搜索已同步缓存。 |
-| `get_note` | 默认按 `slug` 从最近 memo 定位并按原始顺序返回全部图片 `ImageContent`；传入 `scope: "all_synced_notes"` 时从已同步缓存定位。 |
+| `list_notes` | 访问前自动刷新完整内存快照，再列出最新 memo。 |
+| `sync_notes` | 管理员显式强制重建内存快照；普通查询无需调用。 |
+| `search_notes` | 访问前自动刷新；`query` 做全文搜索，`tag` 做精确标签搜索，可单独或组合使用。 |
+| `get_note` | 访问前自动刷新，按 `slug` 从完整内存快照定位并按原始顺序返回全部图片 `ImageContent`。 |
 | `create_note` | 新建 memo。 |
 
-## 全量同步边界
+## 内存快照与新鲜度边界
 
-本项目不提供“一次性返回全部笔记正文”的工具。需要全库检索时，先调用 `sync_notes` 建立本地内存缓存，再用 `search_notes` 或 `get_note` 显式指定：
-
-```json
-{
-  "scope": "all_synced_notes"
-}
-```
-
-`sync_notes` 支持 `pageSize`（最大 200）和 `maxPages`（最大 100）。如果达到页数上限但仍可能有更多笔记，返回值中的 `complete` 会是 `false`。
+- `list_notes`、`search_notes`、`get_note` 每次调用都先执行新鲜度同步；首次访问完整分页拉取，后续访问从最新页开始分页，直到越过上次 `updated_at + slug` 水位之前的重叠窗口。
+- 增量结果按 `slug` 合并：新增 memo 插入、已存在 memo 覆盖更新、远端删除项从当前快照移除。
+- 只有完整同步确认到达末尾后才提交快照；同步失败或分页未闭合时拒绝用旧缓存生成“最新/完整”结论。
+- `search_notes` 的 `tag` 参数做大小写不敏感的精确标签匹配，`agent`、`#agent`、`#Agent` 视为同一标签；不要重复查询这些变体。
+- `sync_notes` 只用于显式强制重建或诊断。它支持 `pageSize`（最大 200）和 `maxPages`（最大 100）。
+- 快照只存在 MCP 进程内存中，不写入数据库；MCP 或 Gateway 重启后的第一次访问会重新完整同步。
 
 ## 多模态读取边界
 

@@ -29,16 +29,32 @@ export interface SyncNotesStatus {
   nextCursor?: MemoPageCursor;
 }
 
+export interface FreshnessResult {
+  initialized: boolean;
+  mode: "full" | "incremental";
+  changed: number;
+  added: number;
+  updated: number;
+  deleted: number;
+  totalCached: number;
+  pages: number;
+  complete: true;
+  syncedAt: string;
+}
+
 export interface FlomoReadClient {
   list(limit?: number): Promise<Memo[]>;
-  search(query: string, limit?: number): Promise<Memo[]>;
+  search(query?: string, limit?: number, tag?: string): Promise<Memo[]>;
   getBySlug(slug: string): Promise<Memo | null>;
   getRecentBatch(cursor?: string): Promise<Memo[]>;
   syncAll(options?: SyncNotesOptions): Promise<SyncNotesResult>;
-  searchSynced(query: string, limit?: number): Promise<Memo[]>;
+  ensureFresh?(options?: SyncNotesOptions): Promise<FreshnessResult>;
+  listSynced?(limit?: number): Promise<Memo[]>;
+  searchSynced(query?: string, limit?: number, tag?: string): Promise<Memo[]>;
   getSyncedBySlug(slug: string): Promise<Memo | null>;
   getSyncStatus(): SyncNotesStatus;
   refreshBySlug(slug: string): Promise<Memo | null>;
+  recordCreated?(memo: Memo): void;
 }
 
 export interface MemoImageFailure {

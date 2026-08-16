@@ -31,8 +31,8 @@ describe("createFlomoMcpServer", () => {
         "search_notes",
         "sync_notes",
       ]);
-      expect(tools.tools.find((tool) => tool.name === "search_notes")?.description).toMatch(/recent/i);
-      expect(tools.tools.find((tool) => tool.name === "get_note")?.description).toMatch(/recent/i);
+      expect(tools.tools.find((tool) => tool.name === "search_notes")?.description).toMatch(/refresh/i);
+      expect(tools.tools.find((tool) => tool.name === "get_note")?.description).toMatch(/refresh/i);
 
       const result = await client.callTool({ name: "ping", arguments: {} });
       const payload = parseToolJson(result);
@@ -48,7 +48,7 @@ describe("createFlomoMcpServer", () => {
     }
   });
 
-  it("marks search and get results as recent-only scoped", async () => {
+  it("uses fresh all-notes scope for search and get results", async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = new McpServer({
       name: "flomo-web-mcp-tool-test",
@@ -83,6 +83,23 @@ describe("createFlomoMcpServer", () => {
           syncedAt: "2026-05-03T00:00:00.000Z",
         };
       },
+      async ensureFresh() {
+        return {
+          initialized: false,
+          mode: "incremental" as const,
+          changed: 0,
+          added: 0,
+          updated: 0,
+          deleted: 0,
+          totalCached: 0,
+          pages: 1,
+          complete: true as const,
+          syncedAt: "2026-05-03T00:00:00.000Z",
+        };
+      },
+      async listSynced() {
+        return [];
+      },
       async searchSynced() {
         return [];
       },
@@ -112,8 +129,8 @@ describe("createFlomoMcpServer", () => {
         ok: true,
         items: [],
         scope: {
-          source: "recent_notes",
-          complete: false,
+          source: "all_synced_notes",
+          complete: true,
         },
       });
 
@@ -123,10 +140,92 @@ describe("createFlomoMcpServer", () => {
         ok: true,
         memo: null,
         scope: {
-          source: "recent_notes",
-          complete: false,
+          source: "all_synced_notes",
+          complete: true,
         },
       });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("refreshes the full in-memory snapshot before searching and supports one exact tag query", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = new McpServer({
+      name: "flomo-web-mcp-fresh-search-test",
+      version: "0.0.0",
+    });
+    const client = new Client({
+      name: "flomo-web-mcp-fresh-search-client",
+      version: "0.0.0",
+    });
+    const calls: string[] = [];
+    const readClient = {
+      async ensureFresh() {
+        calls.push("ensureFresh");
+        return {
+          initialized: false,
+          changed: 1,
+          added: 0,
+          updated: 1,
+          deleted: 0,
+          totalCached: 500,
+          pages: 1,
+          complete: true,
+          syncedAt: "2026-08-15T00:00:00.000Z",
+        };
+      },
+      async searchSynced(query: string, _limit?: number, tag?: string) {
+        calls.push(`search:${query}:${tag}`);
+        return [makeMemo("agent", 0)];
+      },
+      getSyncStatus() {
+        return { synced: true, totalCached: 500, complete: true, syncedAt: "2026-08-15T00:00:00.000Z" };
+      },
+    } as unknown as FlomoReadClient;
+
+    registerSearchNotesTool(server, readClient);
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const result = await client.callTool({ name: "search_notes", arguments: { tag: "#Agent", limit: 20 } });
+      expect(parseToolJson(result)).toMatchObject({
+        ok: true,
+        items: [{ slug: "agent" }],
+        freshness: { complete: true, changed: 1, totalCached: 500 },
+        scope: { source: "all_synced_notes", complete: true },
+      });
+      expect(calls).toEqual(["ensureFresh", "search:undefined:#Agent"]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("fails closed instead of returning stale search results when freshness sync fails", async () => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = new McpServer({ name: "freshness-failure-server", version: "0.0.0" });
+    const client = new Client({ name: "freshness-failure-client", version: "0.0.0" });
+    let searched = false;
+    const readClient = {
+      async ensureFresh() {
+        throw new Error("network unavailable");
+      },
+      async searchSynced() {
+        searched = true;
+        return [makeMemo("stale", 0)];
+      },
+    } as unknown as FlomoReadClient;
+    registerSearchNotesTool(server, readClient);
+
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const result = await client.callTool({ name: "search_notes", arguments: { query: "agent" } });
+      expect(result.isError).toBe(true);
+      expect(parseToolJson(result)).toMatchObject({ ok: false, error: { message: "network unavailable" } });
+      expect(searched).toBe(false);
     } finally {
       await client.close();
       await server.close();
@@ -167,6 +266,23 @@ describe("createFlomoMcpServer", () => {
           complete: true,
           syncedAt: "2026-05-03T00:00:00.000Z",
         };
+      },
+      async ensureFresh() {
+        return {
+          initialized: false,
+          mode: "incremental" as const,
+          changed: 0,
+          added: 0,
+          updated: 0,
+          deleted: 0,
+          totalCached: 12,
+          pages: 1,
+          complete: true as const,
+          syncedAt: "2026-05-03T00:00:00.000Z",
+        };
+      },
+      async listSynced() {
+        return [];
       },
       async searchSynced() {
         return [
@@ -388,6 +504,8 @@ function makeReadClient(memo: ReturnType<typeof makeMemo>): FlomoReadClient {
     async refreshBySlug() { return memo; },
     async getRecentBatch() { return []; },
     async syncAll() { return { synced: 0, totalCached: 0, pages: 0, complete: true, syncedAt: "" }; },
+    async ensureFresh() { return { initialized: false, mode: "incremental", changed: 0, added: 0, updated: 0, deleted: 0, totalCached: 1, pages: 1, complete: true, syncedAt: "2026-08-15T00:00:00.000Z" }; },
+    async listSynced() { return [memo]; },
     async searchSynced() { return []; },
     async getSyncedBySlug() { return memo; },
     getSyncStatus() { return { synced: false, totalCached: 0, complete: false }; },
