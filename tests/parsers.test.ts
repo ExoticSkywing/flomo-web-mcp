@@ -84,6 +84,31 @@ describe("parseMemo", () => {
     ]);
   });
 
+  it("extracts legacy flomo image files whose signed URLs have no file extension", () => {
+    const memo = parseMemo({
+      slug: "legacy-images",
+      content: "<p>#chatgpt #灵感记录</p>",
+      files: [
+        {
+          type: "image",
+          name: "1679581129_8THfbbTM",
+          url: "https://static.flomoapp.com/file/2023-03-23/1035098/1679581129_8THfbbTM?Expires=999&Signature=test",
+        },
+        {
+          type: "image",
+          name: "1679581462_wyw6Dyng",
+          url: "https://static.flomoapp.com/file/2023-03-23/1035098/1679581462_wyw6Dyng?Expires=999&Signature=test2",
+        },
+      ],
+    });
+
+    expect(memo.imageCount).toBe(2);
+    expect(memo.images).toMatchObject([
+      { index: 1, fileName: "1679581129_8THfbbTM" },
+      { index: 2, fileName: "1679581462_wyw6Dyng" },
+    ]);
+  });
+
   it("accepts image-only memos and rejects truly empty memos", () => {
     expect(
       parseMemo({

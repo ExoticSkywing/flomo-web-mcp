@@ -45,6 +45,16 @@ describe("SecureMemoImageLoader", () => {
     expect(requests[0]?.headers.has("Cookie")).toBe(false);
   });
 
+  it("accepts common image MIME aliases when magic bytes are valid", async () => {
+    const jpegBytes = Uint8Array.from([0xff, 0xd8, 0xff, 0xdb]);
+    const result = await makeLoader(async () => imageResponse(jpegBytes, "image/jpg")).load(
+      memoWithImages("https://static.flomoapp.com/legacy-file"),
+    );
+
+    expect(result.failures).toEqual([]);
+    expect(result.images).toMatchObject([{ index: 1, mimeType: "image/jpeg", size: 4 }]);
+  });
+
   it("reports partial results while retaining successful images", async () => {
     let request = 0;
     const loader = makeLoader(async () => {

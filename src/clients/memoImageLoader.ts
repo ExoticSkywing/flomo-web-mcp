@@ -247,7 +247,12 @@ function normalizeMimeType(value: string | null): string | undefined {
   if (!mimeType || mimeType === "application/octet-stream" || mimeType === "binary/octet-stream") {
     return undefined;
   }
-  return mimeType;
+  const aliases: Record<string, string> = {
+    "image/jpg": "image/jpeg",
+    "image/pjpeg": "image/jpeg",
+    "image/x-png": "image/png",
+  };
+  return aliases[mimeType] ?? mimeType;
 }
 
 function startsWith(bytes: Uint8Array, signature: number[]): boolean {

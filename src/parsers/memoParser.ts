@@ -93,13 +93,24 @@ function collectAttachmentImages(value: unknown, target: Array<Omit<MemoImage, "
   const url = pickString(value, FULL_IMAGE_URL_KEYS) ?? pickString(value, IMAGE_URL_KEYS);
   const mimeType = pickString(value, ["mime_type", "mimeType", "content_type", "contentType", "type"]);
   const fileName = pickString(value, ["name", "file_name", "fileName", "filename"]);
-  if (url && (looksLikeImageUrl(url) || mimeType?.toLowerCase().startsWith("image/"))) {
+  const type = pickString(value, ["type", "file_type", "fileType", "kind"]);
+  const declaredImage = isDeclaredImageAttachment(type, mimeType);
+  if (url && (declaredImage || looksLikeImageUrl(url))) {
     target.push({
       url,
       ...optionalField("fileName", fileName),
-      ...optionalField("mimeType", mimeType?.toLowerCase()),
+      ...optionalField("mimeType", normalizeImageMimeType(mimeType)),
     });
   }
+}
+
+function isDeclaredImageAttachment(type: string | undefined, mimeType: string | undefined): boolean {
+  return type?.trim().toLowerCase() === "image" || mimeType?.trim().toLowerCase().startsWith("image/") === true;
+}
+
+function normalizeImageMimeType(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized?.startsWith("image/") ? normalized : undefined;
 }
 
 function extractHtmlAttribute(tag: string, name: string): string | undefined {
