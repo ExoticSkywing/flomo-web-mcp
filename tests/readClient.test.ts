@@ -182,8 +182,8 @@ describe("BearerFlomoReadClient", () => {
       pages: 2,
       complete: false,
     });
-    await expect(client.searchSynced("archive")).resolves.toMatchObject([{ slug: "old-note" }]);
-    await expect(client.getSyncedBySlug("new-note")).resolves.toMatchObject({ slug: "new-note" });
+    await expect(client.searchSynced("archive")).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(client.getSyncedBySlug("new-note")).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
     expect(capturedEndpoints).toHaveLength(2);
     expect(capturedEndpoints[0]).toContain("/api/v1/memo/updated/?");
@@ -388,6 +388,99 @@ describe("BearerFlomoReadClient", () => {
     await expect(client.ensureFresh({ pageSize: 2, maxPages: 1 })).rejects.toMatchObject({ code: "REMOTE_CHANGED" });
     await expect(client.getSyncedBySlug("stable")).resolves.toMatchObject({ slug: "stable" });
     await expect(client.getSyncedBySlug("new-1-a")).resolves.toBeNull();
+  });
+
+  it("discovers a memo created outside the MCP after an initially empty complete snapshot", async () => {
+    let phase: "empty" | "created" = "empty";
+    let calls = 0;
+    const httpClient = {
+      async requestJson(): Promise<unknown> {
+        calls += 1;
+        if (phase === "empty") {
+          return { code: 0, data: [] };
+        }
+        return {
+          code: 0,
+          data: [{ slug: "external", content: "created elsewhere", created_at: 200, updated_at: 200 }],
+        };
+      },
+    } as unknown as FlomoHttpClient;
+    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+
+    await expect(client.ensureFresh()).resolves.toMatchObject({ initialized: true, totalCached: 0, complete: true });
+    phase = "created";
+    await expect(client.ensureFresh()).resolves.toMatchObject({ initialized: false, added: 1, totalCached: 1 });
+    await expect(client.getSyncedBySlug("external")).resolves.toMatchObject({ slug: "external" });
+    expect(calls).toBe(2);
+  });
+
+  it("fails closed when a full page has no valid tail cursor", async () => {
+    const httpClient = {
+      async requestJson(): Promise<unknown> {
+        return {
+          code: 0,
+          data: [
+            { slug: "valid", content: "valid", created_at: 100, updated_at: 100 },
+            { slug: "malformed-tail", content: "missing updated timestamp", created_at: 90 },
+          ],
+        };
+      },
+    } as unknown as FlomoHttpClient;
+    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+
+    await expect(client.ensureFresh({ pageSize: 2, maxPages: 2 })).rejects.toMatchObject({ code: "PARSER_FAILED" });
+    expect(client.getSyncStatus()).toMatchObject({ synced: false, totalCached: 0, complete: false });
+  });
+
+  it("fails closed when an incremental full page has no valid tail cursor and preserves the snapshot", async () => {
+    let phase: "initial" | "incremental" = "initial";
+    const httpClient = {
+      async requestJson(): Promise<unknown> {
+        if (phase === "initial") {
+          return { code: 0, data: [{ slug: "stable", content: "stable", created_at: 100, updated_at: 100 }] };
+        }
+        return {
+          code: 0,
+          data: [
+            { slug: "new-valid", content: "new", created_at: 200, updated_at: 200 },
+            { slug: "malformed-tail", content: "missing updated timestamp", created_at: 190 },
+          ],
+        };
+      },
+    } as unknown as FlomoHttpClient;
+    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+
+    await client.ensureFresh();
+    phase = "incremental";
+    await expect(client.ensureFresh({ pageSize: 2, maxPages: 2 })).rejects.toMatchObject({ code: "PARSER_FAILED" });
+    await expect(client.getSyncedBySlug("stable")).resolves.toMatchObject({ slug: "stable" });
+    await expect(client.getSyncedBySlug("new-valid")).resolves.toBeNull();
+  });
+
+  it("preserves a complete snapshot when an explicit capped full sync is incomplete", async () => {
+    let phase: "initial" | "capped" = "initial";
+    const httpClient = {
+      async requestJson(): Promise<unknown> {
+        if (phase === "initial") {
+          return { code: 0, data: [{ slug: "stable", content: "stable", created_at: 100, updated_at: 100 }] };
+        }
+        return {
+          code: 0,
+          data: [
+            { slug: "partial-a", content: "partial a", created_at: 300, updated_at: 300 },
+            { slug: "partial-b", content: "partial b", created_at: 299, updated_at: 299 },
+          ],
+        };
+      },
+    } as unknown as FlomoHttpClient;
+    const client = new BearerFlomoReadClient(makeConfig(), httpClient);
+
+    await client.ensureFresh();
+    phase = "capped";
+    await expect(client.syncAll({ pageSize: 2, maxPages: 1 })).resolves.toMatchObject({ complete: false, synced: 2 });
+    expect(client.getSyncStatus()).toMatchObject({ synced: true, totalCached: 1, complete: true });
+    await expect(client.getSyncedBySlug("stable")).resolves.toMatchObject({ slug: "stable" });
+    await expect(client.getSyncedBySlug("partial-a")).resolves.toBeNull();
   });
 
   it("requires a sync before searching the full local cache", async () => {

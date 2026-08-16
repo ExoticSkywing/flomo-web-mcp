@@ -8,8 +8,9 @@ import type {
   SyncNotesOptions,
   SyncNotesResult,
   SyncNotesStatus,
+  RawFlomoMemo,
 } from "../types/flomo.js";
-import { FlomoRequestError } from "../utils/errors.js";
+import { FlomoParseError, FlomoRequestError } from "../utils/errors.js";
 import { appendQueryString, buildFlomoWebQuery, getFlomoTz } from "./flomoWeb.js";
 import type { FlomoHttpClient } from "./http.js";
 
@@ -21,6 +22,7 @@ const MAX_SYNC_PAGE_SIZE = 200;
 const DEFAULT_SYNC_MAX_PAGES = 50;
 const MAX_SYNC_MAX_PAGES = 100;
 const INCREMENTAL_OVERLAP_SECONDS = 2;
+const ZERO_CURSOR: MemoPageCursor = { latestUpdatedAt: 0, latestSlug: "" };
 const DEFAULT_READ_ENDPOINT = "/api/v1/memo/latest_updated_desc";
 const DEFAULT_SYNC_ENDPOINT = "/api/v1/memo/updated/";
 
@@ -32,10 +34,20 @@ interface SyncedCache {
   nextCursor?: MemoPageCursor;
 }
 
-interface SyncPage {
-  rawItems: unknown[];
+interface RawSyncPage {
+  rawItems: RawFlomoMemo[];
   rawCount: number;
   nextCursor?: MemoPageCursor;
+}
+
+function requireNextCursorForFullPage(page: RawSyncPage, pageSize: number): MemoPageCursor | undefined {
+  if (page.rawCount < pageSize) {
+    return page.nextCursor;
+  }
+  if (!page.nextCursor || !page.nextCursor.latestSlug || page.nextCursor.latestUpdatedAt <= 0) {
+    throw new FlomoParseError("flomo 同步返回了完整分页，但末行缺少有效的 updated_at + slug 游标，拒绝提交不完整快照。");
+  }
+  return page.nextCursor;
 }
 
 interface FullSyncCollection {
@@ -111,17 +123,19 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     const collected = await this.collectFullSync(pageSize, maxPages);
     const syncedAt = new Date().toISOString();
 
-    this.syncedCache = {
-      complete: collected.complete,
-      items: collected.items,
-      syncedAt,
-      watermark: collected.complete ? collected.watermark : undefined,
-      nextCursor: collected.nextCursor,
-    };
+    if (collected.complete) {
+      this.syncedCache = {
+        complete: true,
+        items: collected.items,
+        syncedAt,
+        watermark: collected.watermark ?? ZERO_CURSOR,
+      };
+      this.cache = undefined;
+    }
 
     return {
       synced: collected.items.size,
-      totalCached: collected.items.size,
+      totalCached: collected.complete ? collected.items.size : (this.syncedCache?.items.size ?? collected.items.size),
       pages: collected.pages,
       complete: collected.complete,
       syncedAt,
@@ -284,7 +298,7 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     let pages = 0;
 
     while (pages < maxPages) {
-      const page = await this.getSyncPage(cursor, pageSize);
+      const page = await this.requestSyncPage(cursor ?? ZERO_CURSOR, pageSize);
       pages += 1;
       watermark = newestCursor(watermark, newestRawCursor(page.rawItems));
 
@@ -296,7 +310,7 @@ export class BearerFlomoReadClient implements FlomoReadClient {
         items.set(slug, parseMemo(raw, this.config.webBaseUrl ?? this.config.baseUrl));
       }
 
-      nextCursor = page.nextCursor;
+      nextCursor = requireNextCursorForFullPage(page, pageSize);
       if (page.rawCount === 0 || page.rawCount < pageSize || !nextCursor) {
         complete = true;
         nextCursor = undefined;
@@ -314,7 +328,7 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     maxPages: number,
   ): Promise<IncrementalCollection> {
     if (!watermark) {
-      return { changes: new Map(), pages: 0, complete: false };
+      return this.collectIncremental(ZERO_CURSOR, pageSize, maxPages);
     }
 
     const changes = new Map<string, unknown>();
@@ -328,7 +342,7 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     let pages = 0;
 
     while (pages < maxPages) {
-      const page = await this.getSyncPage(cursor, pageSize);
+      const page = await this.requestSyncPage(cursor ?? ZERO_CURSOR, pageSize);
       pages += 1;
       newest = newestCursor(newest, newestRawCursor(page.rawItems));
       let crossedBoundary = false;
@@ -345,11 +359,12 @@ export class BearerFlomoReadClient implements FlomoReadClient {
         }
       }
 
-      if (crossedBoundary || page.rawCount === 0 || page.rawCount < pageSize || !page.nextCursor) {
+      const nextCursor = requireNextCursorForFullPage(page, pageSize);
+      if (crossedBoundary || page.rawCount === 0 || page.rawCount < pageSize || !nextCursor) {
         complete = true;
         break;
       }
-      cursor = page.nextCursor;
+      cursor = nextCursor;
     }
 
     return { changes, pages, complete, watermark: newest };
@@ -366,7 +381,7 @@ export class BearerFlomoReadClient implements FlomoReadClient {
     return appendQueryString(endpoint, params);
   }
 
-  private async getSyncPage(cursor: MemoPageCursor | undefined, pageSize: number): Promise<SyncPage> {
+  private async requestSyncPage(cursor: MemoPageCursor, pageSize: number): Promise<RawSyncPage> {
     const endpoint = this.buildSyncEndpoint(this.config.syncEndpoint ?? DEFAULT_SYNC_ENDPOINT, cursor, pageSize);
     const raw = await this.httpClient.requestJson<unknown>(endpoint);
     const rawItems = extractMemoArray(raw);
@@ -441,7 +456,7 @@ function dateMilliseconds(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function extractMemoArray(raw: unknown): unknown[] {
+function extractMemoArray(raw: unknown): RawFlomoMemo[] {
   if (Array.isArray(raw)) {
     return raw;
   }
@@ -467,7 +482,7 @@ function extractMemoArray(raw: unknown): unknown[] {
   throw new FlomoRequestError("PARSER_FAILED", "读取接口返回体中找不到 memo 数组字段。");
 }
 
-function tryExtractMemoArray(raw: Record<string, unknown>): unknown[] | undefined {
+function tryExtractMemoArray(raw: Record<string, unknown>): RawFlomoMemo[] | undefined {
   const candidates = [raw.memos, raw.memo_list, raw.items, raw.list, raw.data, raw.result];
   return candidates.find(Array.isArray);
 }
